@@ -12,7 +12,7 @@ A fast, local-first web interface for the ElevenLabs API. Built to make generati
 
 If you just want to use the tool, you **do not** need to install anything.
 
-👉 **[Launch ElevenLabs WebUI](https://elevenlabs-webui-t2s.vercel.app)** 
+👉 **[Launch ElevenLabs WebUI](https://elevenlabs-all-in-one.vercel.app)** 
 
 This live version runs the exact same code you see in this repository. Just open the link, paste your API key in the settings, and start creating.
 
