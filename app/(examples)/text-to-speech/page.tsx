@@ -2379,7 +2379,7 @@ export default function TextToSpeechPage() {
     : availableClips;
 
 return (
-    <div className="flex flex-col gap-6 p-4 lg:p-8 max-w-[1920px] mx-auto bg-background text-foreground min-h-[100dvh] @container min-w-0">
+    <div className="flex flex-col gap-6 p-2 sm:p-4 lg:p-8 max-w-[1920px] mx-auto bg-background text-foreground min-h-[100dvh] @container min-w-0">
       <style dangerouslySetInnerHTML={{ __html: `
         @keyframes soundwave {
           0%, 100% { height: 4px; }
@@ -2404,20 +2404,20 @@ return (
           )}
         </div>
         {isHosted ? (
-          <div className="flex flex-col items-end text-xs text-zinc-500 bg-zinc-900/60 border border-zinc-800 rounded-lg p-2.5">
+          <div className="flex flex-col items-end text-xs text-zinc-500 bg-zinc-900/60 border border-zinc-800 rounded-lg p-2.5 shrink-0">
             <div className="flex items-center gap-1.5 font-medium text-purple-400">
               <Sparkles className="h-3.5 w-3.5 text-purple-400" />
-              Browser Sandbox Mode
+              Browser Sandbox
             </div>
-            <span className="text-[10px] text-zinc-400 mt-0.5">Files stored locally in browser IndexedDB</span>
+            <span className="text-[10px] text-zinc-400 mt-0.5 hidden sm:inline text-right max-w-[200px] break-words">Files stored locally in browser IndexedDB</span>
           </div>
         ) : (
-          <div className="flex flex-col items-end text-xs text-zinc-500 bg-zinc-900/60 border border-zinc-800 rounded-lg p-2.5">
+          <div className="flex flex-col items-end text-xs text-zinc-500 bg-zinc-900/60 border border-zinc-800 rounded-lg p-2.5 shrink-0 min-w-0">
             <div className="flex items-center gap-1.5 font-medium text-zinc-400">
               <FolderOpen className="h-3.5 w-3.5 text-zinc-400" />
               Local Directory:
             </div>
-            <code className="text-purple-400 mt-0.5 max-w-[280px] truncate select-all">{storagePath}</code>
+            <code className="text-purple-400 mt-0.5 max-w-[160px] xs:max-w-[220px] sm:max-w-[280px] truncate select-all">{storagePath}</code>
           </div>
         )}
       </div>

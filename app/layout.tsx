@@ -51,11 +51,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   <SidebarTrigger />
                   <ApiKeyBanner />
                 </header>
-                <div className="p-2 lg:p-4">
-                  <div className="mx-auto max-w-[1800px] space-y-3 px-2 lg:px-4 lg:py-4">
+                <div className="p-2 lg:p-4 min-w-0 w-full">
+                  <div className="mx-auto max-w-[1800px] space-y-3 px-2 lg:px-4 lg:py-4 min-w-0 w-full">
                     <Byline />
-                    <Card className="border-gradient rounded-lg p-px shadow-lg">
-                      <div className="bg-card rounded-lg">{children}</div>
+                    <Card className="border-gradient rounded-lg p-px shadow-lg min-w-0 w-full">
+                      <div className="bg-card rounded-lg min-w-0 w-full">{children}</div>
                     </Card>
                   </div>
                 </div>
