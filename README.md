@@ -41,20 +41,11 @@ When configured this way, the Next.js server acts as a secure proxy. Team member
 
 ---
 
-## 🛠️ Easy Local Setup (For Beginners)
+## 🛠️ Local Development
 
-If you want to run your own copy locally on your computer, you don't need to know how to code.
+If you want to run the project locally or modify the code:
 
-1. Download and install [Node.js](https://nodejs.org/).
-2. Download this project as a ZIP file (click the green `Code` button at the top, then `Download ZIP`) and extract it.
-3. Open the extracted folder. Click on the address bar at the top of the folder window, type `cmd`, and press Enter. This opens the terminal.
-4. In the terminal, type the following command and press Enter:
-   ```bash
-   npm install
-   ```
-5. Once that finishes, type this command and press Enter:
-   ```bash
-   npm run dev
-   ```
-6. Open your web browser and go to `http://localhost:3000`.
-7. Paste your API key in the UI settings, and you're good to go!
+1. Clone this repository.
+2. Run `npm install`
+3. Run `npm run dev`
+4. Open `http://localhost:3000`
