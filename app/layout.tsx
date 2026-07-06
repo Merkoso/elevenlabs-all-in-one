@@ -35,7 +35,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   return (
     <html lang="en" suppressHydrationWarning className="dark">
-      <body>
+      <body className="overflow-x-hidden w-full">
         <ThemeProvider
           attribute="class"
           defaultTheme="dark"
@@ -46,7 +46,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <KeyProvider apiKey={apiKey}>
             <SidebarProvider>
               <AppSidebar />
-              <SidebarInset className="background">
+              <SidebarInset className="background min-w-0 w-full overflow-hidden">
                 <header className="relative flex h-[60px] shrink-0 items-center justify-between px-3">
                   <SidebarTrigger />
                   <ApiKeyBanner />

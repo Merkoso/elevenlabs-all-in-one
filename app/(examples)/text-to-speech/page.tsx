@@ -2379,7 +2379,7 @@ export default function TextToSpeechPage() {
     : availableClips;
 
 return (
-    <div className="flex flex-col gap-6 p-4 lg:p-8 max-w-[1920px] mx-auto bg-background text-foreground min-h-screen">
+    <div className="flex flex-col gap-6 p-4 lg:p-8 max-w-[1920px] mx-auto bg-background text-foreground min-h-[100dvh] @container min-w-0">
       <style dangerouslySetInnerHTML={{ __html: `
         @keyframes soundwave {
           0%, 100% { height: 4px; }
@@ -2425,7 +2425,7 @@ return (
       {/* Navigation & Volume Row */}
       <div className="flex flex-col xl:flex-row justify-between items-stretch xl:items-center gap-4">
         {/* Tabs */}
-        <div className="flex items-center p-1 bg-zinc-950/80 border border-zinc-850 rounded-lg max-w-3xl w-full xl:w-auto overflow-x-auto h-11">
+        <div className="flex items-center p-1 bg-zinc-950/80 border border-zinc-850 rounded-lg max-w-3xl w-full xl:w-auto overflow-x-auto h-11 scrollbar-thin scrollbar-thumb-zinc-700 hover:scrollbar-thumb-zinc-500 [mask-image:linear-gradient(to_right,white_95%,transparent)] overscroll-contain touch-pan-x">
           <Button 
             variant={activeTab === 'expressive' ? 'default' : 'ghost'} 
             size="sm" 
@@ -2483,7 +2483,7 @@ return (
         </div>
 
         {/* Combined Controls Toolbar (Volume, Zoom, Theme) */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full xl:w-auto">
+        <div className="flex flex-wrap sm:flex-row items-center gap-2.5 w-full xl:w-auto">
           {/* Theme Mode & Color Switcher */}
           <div className="flex items-center gap-3 bg-zinc-950/80 border border-zinc-855 rounded-lg px-3 py-1.5 backdrop-blur-sm h-11 shrink-0 shadow-md">
             {/* Theme color circles */}
@@ -2598,11 +2598,11 @@ return (
       </div>
 
 
-<div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+<div className="grid grid-cols-1 @4xl:grid-cols-12 gap-6 min-w-0">
         
         {/* LEFT COLUMN - Settings controls (Shown for TTS & Chunking & Dialogue) */}
         {activeTab !== 'history' && activeTab !== 'assembly' && (
-          <div className="lg:col-span-4 space-y-3">
+          <div className="@4xl:col-span-4 space-y-3 min-w-0">
             
             {/* Privacy Manifesto Banner */}
             {!zenMode && (
@@ -3355,7 +3355,7 @@ return (
 
         {/* RIGHT COLUMN - Tab Contents */}
         {activeTab !== 'history' && activeTab !== 'assembly' && (
-          <div className="lg:col-span-8 space-y-5">
+          <div className="@4xl:col-span-8 space-y-5 min-w-0">
             {isApiKeyMissing && (
               <div className="p-4 bg-red-950/20 border border-red-900/35 rounded-lg text-xs flex flex-col gap-1.5 text-red-200">
                 <div className="flex items-center gap-2 font-semibold">
@@ -4115,7 +4115,7 @@ return (
                                   <span>•</span>
                                   <span>{new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                 </div>
-                                <p className="text-zinc-300 truncate font-sans text-xs">{item.text}</p>
+                                <p className="text-zinc-300 line-clamp-2 break-words font-sans text-xs" title={item.text}>{item.text}</p>
                               </div>
                               <Button
                                 size="sm"
@@ -4167,7 +4167,7 @@ return (
                                 <span className="font-mono text-zinc-500 text-xs font-bold w-4">{idx + 1}.</span>
                                 <div className="min-w-0 flex-1">
                                   <div className="text-[10px] text-purple-400 font-bold">{item.voiceName}</div>
-                                  <p className="text-zinc-200 truncate text-xs">{item.text}</p>
+                                  <p className="text-zinc-200 line-clamp-2 break-words text-xs" title={item.text}>{item.text}</p>
                                 </div>
                               </div>
 
@@ -4272,7 +4272,7 @@ return (
 
         {/* FULL WIDTH - Tab: History */}
         {activeTab === 'history' && (
-          <div className="lg:col-span-12 space-y-4">
+          <div className="col-span-1 @4xl:col-span-12 space-y-4 min-w-0">
             <div className="flex justify-between items-center">
               <div>
                 <h2 className="text-lg font-bold text-zinc-200">Local History Log</h2>
@@ -4343,7 +4343,7 @@ return (
                   if (!group.isGroup) {
                     const item = group.items[0];
                     return (
-                      <Card key={item.id} className="border-zinc-850 bg-zinc-950/40 relative flex flex-col justify-between group/card hover:border-purple-900/40 hover:shadow-lg hover:shadow-purple-950/10 transition-all duration-300">
+                      <Card key={item.id} className="border-zinc-850 bg-zinc-950/40 relative flex flex-col justify-between group/card hover:border-purple-900/40 hover:shadow-lg hover:shadow-purple-950/10 transition-all duration-300 [content-visibility:auto] [contain-intrinsic-size:auto_180px]">
                         <CardHeader className="py-3 flex flex-row items-center justify-between border-b border-zinc-900 space-y-0">
                           <div className="flex items-center gap-1.5">
                             <span className={`h-2 w-2 rounded-full ${item.type === 'dialogue' ? 'bg-blue-400' : item.type === 'chunked' ? 'bg-yellow-400' : item.type === 'sts' ? 'bg-purple-400' : 'bg-green-400'}`} />
