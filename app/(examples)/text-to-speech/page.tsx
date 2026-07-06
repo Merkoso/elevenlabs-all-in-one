@@ -2423,9 +2423,9 @@ return (
       </div>
 
       {/* Navigation & Volume Row */}
-      <div className="flex flex-col xl:flex-row justify-between items-stretch xl:items-center gap-4">
+      <div className="flex flex-col @6xl:flex-row justify-between items-stretch @6xl:items-center gap-4 min-w-0">
         {/* Tabs */}
-        <div className="flex items-center p-1 bg-zinc-950/80 border border-zinc-850 rounded-lg max-w-3xl w-full xl:w-auto overflow-x-auto h-11 scrollbar-thin scrollbar-thumb-zinc-700 hover:scrollbar-thumb-zinc-500 [mask-image:linear-gradient(to_right,white_95%,transparent)] overscroll-contain touch-pan-x">
+        <div className="flex items-center p-1 bg-zinc-950/80 border border-zinc-850 rounded-lg max-w-3xl w-full @6xl:w-auto overflow-x-auto h-11 scrollbar-thin scrollbar-thumb-zinc-700 hover:scrollbar-thumb-zinc-500 [mask-image:linear-gradient(to_right,white_95%,transparent)] overscroll-contain touch-pan-x">
           <Button 
             variant={activeTab === 'expressive' ? 'default' : 'ghost'} 
             size="sm" 
@@ -2483,7 +2483,7 @@ return (
         </div>
 
         {/* Combined Controls Toolbar (Volume, Zoom, Theme) */}
-        <div className="flex flex-wrap sm:flex-row items-center gap-2.5 w-full xl:w-auto">
+        <div className="flex flex-wrap sm:flex-row items-center gap-2.5 w-full @6xl:w-auto">
           {/* Theme Mode & Color Switcher */}
           <div className="flex items-center gap-3 bg-zinc-950/80 border border-zinc-855 rounded-lg px-3 py-1.5 backdrop-blur-sm h-11 shrink-0 shadow-md">
             {/* Theme color circles */}
@@ -3549,7 +3549,7 @@ return (
                     )}
                   </div>
 
-                  <div className="pt-3.5 border-t border-zinc-900 flex items-center justify-between gap-3.5 mt-2">
+                  <div className="pt-3.5 border-t border-zinc-900 flex flex-wrap items-center justify-between gap-3.5 mt-2">
                     <div className="flex items-center gap-2.5 text-sm">
                       <span className="text-zinc-400 font-semibold">Batch Takes:</span>
                       <Select value={takesCount.toString()} onValueChange={(val) => setTakesCount(Number(val))}>
