@@ -23,7 +23,7 @@ This live version runs the exact same code you see in this repository. Just open
 This application has **no database** and **no backend**. 
 
 - **Local Storage:** Your API key, generated audio history, and workspace settings are saved strictly in your browser using `IndexedDB` and `localStorage`.
-- **Zero Logging:** We do not track, log, or intercept your text or audio. 
+- **Zero Logging:** Your text and audio are never tracked, logged, or intercepted. 
 - **Verifiable:** The code is 100% open-source. You can read it yourself to verify how your data is handled.
 
 ---
