@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="public/github-banner.png" alt="ElevenLabs WebUI Banner" width="100%">
+  <img src="public/github-banner-v3.png" alt="ElevenLabs WebUI Banner" width="100%">
 </p>
 
 # ElevenLabs WebUI
