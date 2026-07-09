@@ -475,6 +475,18 @@ export default function TextToSpeechPage() {
     };
   }, [globalVolume]);
 
+  // Automatically select a default voice for dialogue lines if none is selected
+  useEffect(() => {
+    if (selectedVoiceId) {
+      setDialogueLines(prev => {
+        if (prev.some(l => !l.voiceId)) {
+          return prev.map(l => l.voiceId ? l : { ...l, voiceId: selectedVoiceId });
+        }
+        return prev;
+      });
+    }
+  }, [selectedVoiceId]);
+
   const [isExportingWorkspace, setIsExportingWorkspace] = useState<boolean>(false);
   const [isHosted, setIsHosted] = useState<boolean>(false);
   const [isImportOpen, setIsImportOpen] = useState<boolean>(false);
@@ -627,7 +639,10 @@ export default function TextToSpeechPage() {
 
           setVoices(merged);
           if (merged.length > 0) {
-            setSelectedVoiceId(prev => prev || merged[0].voiceId);
+            setSelectedVoiceId(prev => {
+              const stillExists = prev && merged.some(v => v.voiceId === prev);
+              return stillExists ? prev : merged[0].voiceId;
+            });
           }
         } else {
           const errStr = vResult.error || '';
@@ -660,7 +675,10 @@ export default function TextToSpeechPage() {
             }
             setVoices(merged);
             if (merged.length > 0) {
-              setSelectedVoiceId(prev => prev || merged[0].voiceId);
+              setSelectedVoiceId(prev => {
+                const stillExists = prev && merged.some(v => v.voiceId === prev);
+                return stillExists ? prev : merged[0].voiceId;
+              });
             }
           } else {
             toast.error(`Voices Error: ${vResult.error}`);
@@ -681,7 +699,11 @@ export default function TextToSpeechPage() {
           setModels(ttsCapableModels);
           // Set default model v3 if available, otherwise fallback
           const hasV3 = ttsCapableModels.some(m => m.model_id === 'eleven_v3');
-          setSelectedModelId(hasV3 ? 'eleven_v3' : ttsCapableModels[0]?.model_id || 'eleven_v3');
+          setSelectedModelId(prev => {
+            const stillExists = prev && ttsCapableModels.some(m => m.model_id === prev);
+            if (stillExists) return prev;
+            return hasV3 ? 'eleven_v3' : (ttsCapableModels[0]?.model_id || 'eleven_v3');
+          });
         } else {
           const errStr = mResult.error || '';
           const lowerErr = errStr.toLowerCase();
@@ -700,7 +722,10 @@ export default function TextToSpeechPage() {
               { model_id: 'eleven_multilingual_sts_v2', name: 'Eleven Multilingual STS v2', can_do_text_to_speech: true } as ElevenLabsModel
             ];
             setModels(fallbackModels);
-            setSelectedModelId('eleven_v3');
+            setSelectedModelId(prev => {
+              const stillExists = prev && fallbackModels.some(m => m.model_id === prev);
+              return stillExists ? prev : 'eleven_v3';
+            });
           } else {
             toast.error(`Models Error: ${mResult.error}`);
           }
