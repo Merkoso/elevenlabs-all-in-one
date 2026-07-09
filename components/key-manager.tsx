@@ -14,18 +14,30 @@ export const KeyManager = () => {
   const [isPopoverOpen, setIsPopoverOpen] = useState(false);
   const [inputValue, setInputValue] = useState(key || '');
 
+  const [isSaving, setIsSaving] = useState(false);
+
   const hasChanges = inputValue !== (key || '');
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const newKey = inputValue.trim() === '' ? null : inputValue;
-    setKey(newKey);
-    setIsPopoverOpen(false);
+    setIsSaving(true);
+    try {
+      await setKey(newKey);
+    } finally {
+      setIsSaving(false);
+      setIsPopoverOpen(false);
+    }
   };
 
-  const handleClear = () => {
+  const handleClear = async () => {
     setInputValue('');
-    setKey(null);
-    setIsPopoverOpen(false);
+    setIsSaving(true);
+    try {
+      await setKey(null);
+    } finally {
+      setIsSaving(false);
+      setIsPopoverOpen(false);
+    }
   };
 
   return (
@@ -54,8 +66,8 @@ export const KeyManager = () => {
               <TrashIcon />
             </Button>
           </div>
-          <Button onClick={handleSave} disabled={!hasChanges}>
-            Save Changes
+          <Button onClick={handleSave} disabled={!hasChanges || isSaving}>
+            {isSaving ? 'Saving...' : 'Save Changes'}
           </Button>
         </div>
       </PopoverContent>

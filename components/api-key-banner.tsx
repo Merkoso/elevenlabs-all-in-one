@@ -28,13 +28,20 @@ export function ApiKeyBanner({ variant = 'header' }: ApiKeyBannerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [inputValue, setInputValue] = useState(key || '');
 
+  const [isConnecting, setIsConnecting] = useState(false);
+
   const hasApiKey = key !== null && key !== '';
   const hasChanges = inputValue !== (key || '');
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const newKey = inputValue.trim() === '' ? null : inputValue;
-    setKey(newKey);
-    setIsOpen(false);
+    setIsConnecting(true);
+    try {
+      await setKey(newKey);
+    } finally {
+      setIsConnecting(false);
+      setIsOpen(false);
+    }
   };
 
   const handleClear = () => {
@@ -70,10 +77,10 @@ export function ApiKeyBanner({ variant = 'header' }: ApiKeyBannerProps) {
           </div>
           <Button 
             onClick={handleSave} 
-            disabled={!inputValue.trim()} 
+            disabled={!inputValue.trim() || isConnecting} 
             className="w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold h-10 rounded-lg shadow-lg hover:shadow-purple-500/20 transition-all text-xs"
           >
-            Connect API Key
+            {isConnecting ? 'Connecting...' : 'Connect API Key'}
           </Button>
           <p className="text-[10px] text-zinc-500">
             Don&apos;t have a key?{' '}
