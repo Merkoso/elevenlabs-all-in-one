@@ -30,6 +30,7 @@ import {
   Copy,
   Check,
   Mic,
+  GripVertical,
   Radio,
   ChevronDown,
   Smile,
@@ -221,12 +222,39 @@ export default function TextToSpeechPage() {
   const [outputFormat, setOutputFormat] = useState<string>('mp3_44100_128');
   const [applyTextNormalization, setApplyTextNormalization] = useState<'auto' | 'on' | 'off'>('auto');
   const [withTimestamps, setWithTimestamps] = useState<boolean>(false);
+  const generateId = () => Math.random().toString(36).substring(2, 9);
   
-  // Dialogue Tab State
-  const [dialogueLines, setDialogueLines] = useState<DialogueLineInput[]>([
-    { text: 'Hello, how can I help you?', voiceId: '' },
-    { text: 'I am looking for a voice workbench.', voiceId: '' }
+  const [dialogueLines, setDialogueLines] = useState<(DialogueLineInput & { id: string })[]>([
+    { id: generateId(), text: '', voiceId: '' }
   ]);
+
+  // Drag and Drop State for Dialogue Lines
+  const dragItem = useRef<number | null>(null);
+  const dragOverItem = useRef<number | null>(null);
+
+  const handleDragStart = (e: React.DragEvent<HTMLDivElement>, position: number) => {
+    dragItem.current = position;
+    // Optional visual tweak during drag
+    requestAnimationFrame(() => {
+      e.currentTarget.style.opacity = '0.4';
+    });
+  };
+
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>, position: number) => {
+    dragOverItem.current = position;
+  };
+
+  const handleDragEnd = (e: React.DragEvent<HTMLDivElement>) => {
+    e.currentTarget.style.opacity = '1';
+    if (dragItem.current !== null && dragOverItem.current !== null && dragItem.current !== dragOverItem.current) {
+      const _dialogueLines = [...dialogueLines];
+      const draggedItemContent = _dialogueLines.splice(dragItem.current, 1)[0];
+      _dialogueLines.splice(dragOverItem.current, 0, draggedItemContent);
+      setDialogueLines(_dialogueLines);
+    }
+    dragItem.current = null;
+    dragOverItem.current = null;
+  };
   
   // Chunking Tab State
   const [chunkText, setChunkText] = useState<string>('');
@@ -1013,7 +1041,7 @@ export default function TextToSpeechPage() {
 
     if (item.type === 'dialogue') {
       if (item.dialogueLines) {
-        setDialogueLines(item.dialogueLines);
+        setDialogueLines(item.dialogueLines.map(line => ({ ...line, id: generateId() })));
       }
       setActiveTab('dialogue');
       toast.success('Dialogue settings and rows replicated from history!');
@@ -1245,12 +1273,20 @@ export default function TextToSpeechPage() {
 
   // Dialogue Line management
   const addDialogueLine = () => {
-    setDialogueLines([...dialogueLines, { text: '', voiceId: selectedVoiceId }]);
+    setDialogueLines([...dialogueLines, { id: generateId(), text: '', voiceId: selectedVoiceId }]);
   };
 
   const removeDialogueLine = (index: number) => {
+    if (dialogueLines.length <= 1) return;
     const lines = [...dialogueLines];
     lines.splice(index, 1);
+    setDialogueLines(lines);
+  };
+
+  const duplicateDialogueLine = (index: number) => {
+    const lines = [...dialogueLines];
+    const duplicatedLine = { ...lines[index], id: generateId() };
+    lines.splice(index + 1, 0, duplicatedLine);
     setDialogueLines(lines);
   };
 
@@ -3836,11 +3872,24 @@ return (
                 <CardContent className="px-5 pb-5 pt-0 space-y-4">
                   <div className="space-y-3.5 max-h-[350px] overflow-y-auto pr-1">
                     {dialogueLines.map((line, idx) => (
-                      <div key={idx} className="flex gap-3 items-start bg-zinc-950/60 border border-zinc-900 rounded-lg p-3.5 relative">
+                      <div 
+                        key={line.id} 
+                        className="flex gap-2 items-start bg-zinc-950/60 border border-zinc-900 rounded-lg p-2.5 relative group"
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, idx)}
+                        onDragEnter={(e) => handleDragEnter(e, idx)}
+                        onDragEnd={handleDragEnd}
+                        onDragOver={(e) => e.preventDefault()}
+                      >
+                        {/* Drag Handle */}
+                        <div className="flex flex-col items-center justify-center pt-5 px-0.5 cursor-grab active:cursor-grabbing text-zinc-600 hover:text-zinc-400">
+                          <GripVertical className="h-5 w-5" />
+                        </div>
+
                         <div className="flex-1 space-y-2.5">
                           {/* Voice select */}
                           <div className="flex items-center gap-2">
-                            <span className="text-xs text-zinc-400 font-bold font-mono">Row {idx + 1}</span>
+                            <span className="text-xs text-zinc-400 font-bold font-mono min-w-[36px]">#{idx + 1}</span>
                             <Select 
                               value={line.voiceId} 
                               onValueChange={(val) => updateDialogueLine(idx, 'voiceId', val)}
@@ -3864,15 +3913,27 @@ return (
                           />
                         </div>
                         
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          onClick={() => removeDialogueLine(idx)}
-                          className="h-8 w-8 text-zinc-500 hover:text-red-400 hover:bg-zinc-800/40 rounded-md transition-all mt-6"
-                          disabled={dialogueLines.length <= 1}
-                        >
-                          <Trash className="h-4 w-4" />
-                        </Button>
+                        <div className="flex flex-col gap-1 mt-1">
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            onClick={() => duplicateDialogueLine(idx)}
+                            className="h-8 w-8 text-zinc-500 hover:text-purple-400 hover:bg-zinc-800/40 rounded-md transition-all"
+                            title="Duplicate row"
+                          >
+                            <Copy className="h-4 w-4" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            onClick={() => removeDialogueLine(idx)}
+                            className="h-8 w-8 text-zinc-500 hover:text-red-400 hover:bg-zinc-800/40 rounded-md transition-all"
+                            disabled={dialogueLines.length <= 1}
+                            title="Delete row"
+                          >
+                            <Trash className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </div>
