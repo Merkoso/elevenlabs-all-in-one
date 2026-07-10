@@ -25,6 +25,8 @@ import {
   Activity,
   History,
   AlertTriangle,
+  AlertCircle,
+  Loader2,
   Copy,
   Check,
   Mic,
@@ -173,7 +175,7 @@ const OUTPUT_FORMATS = [
 ];
 
 export default function TextToSpeechPage() {
-  const [apiKey] = useKey();
+  const [apiKey, setKey] = useKey();
   
   // Navigation Tabs
   const [activeTab, setActiveTab] = useState<'expressive' | 'chunking' | 'dialogue' | 'voice2voice' | 'assembly' | 'history'>('expressive');
@@ -238,7 +240,32 @@ export default function TextToSpeechPage() {
   const [modelsLoading, setModelsLoading] = useState<boolean>(true);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [currentResult, setCurrentResult] = useState<any | null>(null);
-  
+
+  // Rate Limit & Auth Errors
+  const [rateLimitSeconds, setRateLimitSeconds] = useState<number>(0);
+  const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
+  const [authModalKey, setAuthModalKey] = useState<string>('');
+  const [isSavingKey, setIsSavingKey] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (rateLimitSeconds > 0) {
+      const timer = setInterval(() => setRateLimitSeconds(prev => prev - 1), 1000);
+      return () => clearInterval(timer);
+    }
+  }, [rateLimitSeconds]);
+
+  const handleApiError = (errStr: string) => {
+    if (errStr.includes('(401)')) {
+      setShowAuthModal(true);
+      return true;
+    }
+    if (errStr.includes('(429)')) {
+      setRateLimitSeconds(3);
+      return true;
+    }
+    return false;
+  };
+
   // UI Helpers
   const [previewingVoiceId, setPreviewingVoiceId] = useState<string | null>(null);
   const [voiceSearch, setVoiceSearch] = useState<string>('');
@@ -1192,6 +1219,7 @@ export default function TextToSpeechPage() {
             errStr = r.value.error;
           }
           console.error(`Failed to generate take ${r.idx + 1}:`, errStr);
+          handleApiError(errStr);
         }
       }
 
@@ -1295,7 +1323,9 @@ export default function TextToSpeechPage() {
 
       toast.success('Dialogue session mixed successfully!');
     } else {
-      toast.error(res.error);
+      if (!handleApiError(res.error)) {
+        toast.error(res.error);
+      }
     }
   };
 
@@ -1441,9 +1471,11 @@ export default function TextToSpeechPage() {
         sizeBytes: data.sizeBytes
       }, data.audioBase64);
 
-      toast.success('Voice converted successfully!');
+      toast.success('Speech-to-Speech converted successfully!');
     } else {
-      toast.error(res.error);
+      if (!handleApiError(res.error)) {
+        toast.error(res.error);
+      }
     }
   };
 
@@ -1567,6 +1599,9 @@ export default function TextToSpeechPage() {
           chunks: chunks
         }, data.audioBase64);
       } else {
+        if (handleApiError(res.error)) {
+          break;
+        }
         toast.error(`Failed on chunk ${i + 1}: ${res.error}`);
         break;
       }
@@ -3590,12 +3625,15 @@ return (
                     </div>
 
                     <Button 
-                      disabled={isGenerating || !text.trim() || !selectedVoiceId || isApiKeyMissing}
-                      onClick={handleGenerate}
+                      id="generate-btn"
+                      onClick={handleGenerate} 
+                      disabled={isGenerating || !text.trim() || !selectedVoiceId || isApiKeyMissing || rateLimitSeconds > 0}
                       className="btn-interactive-lift bg-purple-600 hover:bg-purple-700 text-white font-bold text-sm rounded-md min-w-[180px] h-10"
                     >
                       {isApiKeyMissing ? (
                         'API Key Required'
+                      ) : rateLimitSeconds > 0 ? (
+                        `ElevenLabs просит подождать... ${rateLimitSeconds}с`
                       ) : isGenerating ? (
                         <>
                           <div className="mini-wave-container">
@@ -3754,11 +3792,13 @@ return (
                         
                         <Button 
                           onClick={handleGenerateChunks} 
-                          disabled={isGeneratingChunks || chunks.length === 0 || isApiKeyMissing}
+                          disabled={isGeneratingChunks || chunks.length === 0 || isApiKeyMissing || rateLimitSeconds > 0}
                           className="btn-interactive-lift bg-purple-600 hover:bg-purple-700 text-white text-sm font-bold h-10 min-w-[180px]"
                         >
                           {isApiKeyMissing ? (
                             'API Key Required'
+                          ) : rateLimitSeconds > 0 ? (
+                            `ElevenLabs просит подождать... ${rateLimitSeconds}с`
                           ) : isGeneratingChunks ? (
                             <>
                               <div className="mini-wave-container">
@@ -3844,11 +3884,13 @@ return (
                     <Button 
                       id="dialogue-generate-btn"
                       onClick={handleGenerateDialogue} 
-                      disabled={isGenerating || dialogueLines.length === 0 || isApiKeyMissing}
+                      disabled={isGenerating || dialogueLines.length === 0 || isApiKeyMissing || rateLimitSeconds > 0}
                       className="btn-interactive-lift bg-purple-600 hover:bg-purple-700 text-white text-sm font-bold h-10 min-w-[150px]"
                     >
                       {isApiKeyMissing ? (
                         'API Key Required'
+                      ) : rateLimitSeconds > 0 ? (
+                        `ElevenLabs просит подождать... ${rateLimitSeconds}с`
                       ) : isGenerating ? (
                         <>
                           <div className="mini-wave-container">
@@ -4653,6 +4695,54 @@ return (
                   className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold"
                 >
                   Create Project
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* 401 Auth Error Modal Overlay */}
+      {showAuthModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
+          <Card className="w-full max-w-md border-red-900/50 bg-zinc-950 text-zinc-100 shadow-2xl animate-in fade-in zoom-in duration-200">
+            <CardHeader className="pb-3 border-b border-zinc-900">
+              <CardTitle className="text-sm font-semibold flex items-center gap-1.5 text-red-400">
+                <AlertCircle className="h-4 w-4" />
+                Ошибка авторизации (401)
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4 pt-4">
+              <div className="text-xs text-zinc-300 leading-relaxed">
+                Похоже, ваш ключ больше не действителен (возможно, он был отозван или удален). Пожалуйста, введите новый валидный ключ ElevenLabs.
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="new-auth-key" className="text-xs text-zinc-400">Новый API Ключ</Label>
+                <Input 
+                  id="new-auth-key" 
+                  type="password"
+                  placeholder="sk_..." 
+                  value={authModalKey}
+                  onChange={(e) => setAuthModalKey(e.target.value)}
+                  className="bg-zinc-900 border-zinc-800 text-xs h-9 font-mono focus-visible:ring-red-900/50"
+                />
+              </div>
+              <div className="flex justify-end pt-2">
+                <Button 
+                  size="sm" 
+                  disabled={isSavingKey || !authModalKey.trim()}
+                  onClick={async () => {
+                    setIsSavingKey(true);
+                    await setKey(authModalKey.trim());
+                    setIsSavingKey(false);
+                    setShowAuthModal(false);
+                    setAuthModalKey('');
+                    toast.success('Key updated! Try generating again.');
+                  }}
+                  className="bg-red-900 hover:bg-red-800 text-white text-xs font-semibold px-6"
+                >
+                  {isSavingKey ? <Loader2 className="h-3 w-3 mr-2 animate-spin" /> : null}
+                  Сохранить и продолжить
                 </Button>
               </div>
             </CardContent>
