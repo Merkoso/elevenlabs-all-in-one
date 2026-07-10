@@ -3413,8 +3413,8 @@ return (
                       value={text}
                       onChange={(e) => setText(e.target.value)}
                     />
-                    <div className="absolute right-3.5 bottom-3.5 text-xs text-zinc-500 font-mono bg-zinc-950/60 px-1.5 py-0.5 rounded border border-zinc-800/35">
-                      {text.length.toLocaleString()} chars
+                    <div className={`absolute right-3.5 bottom-3.5 text-xs font-mono bg-zinc-950/60 px-1.5 py-0.5 rounded border border-zinc-800/35 transition-colors ${text.length > 5000 ? 'text-red-400 border-red-900/50' : 'text-zinc-500'}`}>
+                      {text.length.toLocaleString()} / 5000
                     </div>
                   </div>
 
