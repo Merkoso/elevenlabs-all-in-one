@@ -362,6 +362,9 @@ export default function TextToSpeechPage() {
   const seedRef = useRef(seed);
   const isSeedLockedRef = useRef(isSeedLocked);
   const takesCountRef = useRef(takesCount);
+  const dialogueLinesRef = useRef(dialogueLines);
+  const chunkTextRef = useRef(chunkText);
+  const activeTabRef = useRef(activeTab);
 
   // Sync refs when states change
   useEffect(() => { textRef.current = text; }, [text]);
@@ -371,6 +374,9 @@ export default function TextToSpeechPage() {
   useEffect(() => { seedRef.current = seed; }, [seed]);
   useEffect(() => { isSeedLockedRef.current = isSeedLocked; }, [isSeedLocked]);
   useEffect(() => { takesCountRef.current = takesCount; }, [takesCount]);
+  useEffect(() => { dialogueLinesRef.current = dialogueLines; }, [dialogueLines]);
+  useEffect(() => { chunkTextRef.current = chunkText; }, [chunkText]);
+  useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
 
   // Safe storage helper with QuotaExceededError protection
   const safeSetLocalStorage = useCallback((key: string, value: string) => {
@@ -422,6 +428,27 @@ export default function TextToSpeechPage() {
   useEffect(() => {
     if (!isLoaded) return;
     const timer = setTimeout(() => {
+      safeSetLocalStorage('tts-workbench-dialogue-lines', JSON.stringify(dialogueLines));
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [dialogueLines, safeSetLocalStorage, isLoaded]);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    const timer = setTimeout(() => {
+      safeSetLocalStorage('tts-workbench-chunk-text', chunkText);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [chunkText, safeSetLocalStorage, isLoaded]);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    safeSetLocalStorage('tts-workbench-active-tab', activeTab);
+  }, [activeTab, safeSetLocalStorage, isLoaded]);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    const timer = setTimeout(() => {
       safeSetLocalStorage('tts-workbench-stability', stability.toString());
     }, 300);
     return () => clearTimeout(timer);
@@ -455,6 +482,9 @@ export default function TextToSpeechPage() {
         localStorage.setItem('tts-workbench-seed', seedRef.current);
         localStorage.setItem('tts-workbench-seed-locked', JSON.stringify(isSeedLockedRef.current));
         localStorage.setItem('tts-workbench-takes-count', takesCountRef.current.toString());
+        localStorage.setItem('tts-workbench-dialogue-lines', JSON.stringify(dialogueLinesRef.current));
+        localStorage.setItem('tts-workbench-chunk-text', chunkTextRef.current);
+        localStorage.setItem('tts-workbench-active-tab', activeTabRef.current);
       } catch (e) {
         console.warn('Failed to save settings synchronously on close:', e);
       }
@@ -663,6 +693,26 @@ export default function TextToSpeechPage() {
           const parsedCount = parseInt(savedTakesCount, 10);
           if (!isNaN(parsedCount)) {
             setTakesCount(Math.max(1, Math.min(10, parsedCount)));
+          }
+        }
+
+        const savedActiveTab = localStorage.getItem('tts-workbench-active-tab');
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        if (savedActiveTab) setActiveTab(savedActiveTab as any);
+
+        const savedChunkText = localStorage.getItem('tts-workbench-chunk-text');
+        if (savedChunkText) setChunkText(savedChunkText);
+
+        const savedDialogueLines = localStorage.getItem('tts-workbench-dialogue-lines');
+        if (savedDialogueLines) {
+          try {
+            const parsed = JSON.parse(savedDialogueLines);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              setDialogueLines(parsed.map((p: any) => ({ ...p, id: p.id || generateId() })));
+            }
+          } catch (err) {
+            console.warn('Failed to parse saved dialogue lines', err);
           }
         }
       } catch (e) {
