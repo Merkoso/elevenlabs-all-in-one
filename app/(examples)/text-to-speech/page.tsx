@@ -44,6 +44,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
 import { Input } from '@/components/ui/input';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -2851,66 +2852,29 @@ return (
                 </div>
               </CardHeader>
               <CardContent className="px-5 pb-5 pt-0 space-y-4">
-                {/* Stability */}
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-zinc-300 font-semibold text-[13px]">Stability</span>
-                    <span className="font-mono text-xs text-purple-400 bg-purple-950/20 px-1.5 py-0.5 rounded border border-purple-900/30">
-                      {Math.round(stability * 100)}%
-                    </span>
-                  </div>
-                  <Slider 
-                    value={[stability]} 
-                    onValueChange={(val) => setStability(val[0])} 
-                    max={1} 
-                    min={0} 
-                    step={0.01}
-                    className="[&>.relative>.bg-primary]:bg-purple-500 mt-1"
-                  />
-                  {!zenMode && (
-                    <div className="flex justify-between text-xs text-zinc-500">
-                      <span>Variable / Expressive</span>
-                      <span>Stable Narration</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Similarity Boost */}
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-zinc-300 font-semibold text-[13px]">Clarity / Similarity</span>
-                    <span className="font-mono text-xs text-purple-400 bg-purple-950/20 px-1.5 py-0.5 rounded border border-purple-900/30">
-                      {Math.round(similarityBoost * 100)}%
-                    </span>
-                  </div>
-                  <Slider 
-                    value={[similarityBoost]} 
-                    onValueChange={(val) => setSimilarityBoost(val[0])} 
-                    max={1} 
-                    min={0} 
-                    step={0.01}
-                    className="[&>.relative>.bg-primary]:bg-purple-500 mt-1"
-                  />
-                  {!zenMode && (
-                    <div className="flex justify-between text-xs text-zinc-500">
-                      <span>Natural Variance</span>
-                      <span>High Similarity</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Style Exaggeration */}
-                {selectedModelId !== 'eleven_flash_v2_5' && (
+                <TooltipProvider delayDuration={300}>
+                  {/* Stability */}
                   <div className="space-y-2">
                     <div className="flex justify-between items-center text-xs">
-                      <span className="text-zinc-300 font-semibold text-[13px]">Style Exaggeration</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-zinc-300 font-semibold text-[13px]">Stability</span>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Info className="h-3.5 w-3.5 text-zinc-500 hover:text-zinc-300 cursor-help transition-colors" />
+                          </TooltipTrigger>
+                          <TooltipContent className="bg-zinc-900 border border-zinc-800 text-zinc-300 max-w-[280px] p-3 shadow-xl">
+                            <p className="font-semibold text-zinc-100 mb-1">Stability</p>
+                            <p>Низкая стабильность делает голос более живым и эмоциональным (но иногда с артефактами). Высокая стабильность (свыше 70%) делает речь надежной, но может звучать более монотонно.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
                       <span className="font-mono text-xs text-purple-400 bg-purple-950/20 px-1.5 py-0.5 rounded border border-purple-900/30">
-                        {Math.round(style * 100)}%
+                        {Math.round(stability * 100)}%
                       </span>
                     </div>
                     <Slider 
-                      value={[style]} 
-                      onValueChange={(val) => setStyle(val[0])} 
+                      value={[stability]} 
+                      onValueChange={(val) => setStability(val[0])} 
                       max={1} 
                       min={0} 
                       step={0.01}
@@ -2918,12 +2882,84 @@ return (
                     />
                     {!zenMode && (
                       <div className="flex justify-between text-xs text-zinc-500">
-                        <span>More Neutral</span>
-                        <span>Stronger Accent/Intonation</span>
+                        <span>Variable / Expressive</span>
+                        <span>Stable Narration</span>
                       </div>
                     )}
                   </div>
-                )}
+
+                  {/* Similarity Boost */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center text-xs">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-zinc-300 font-semibold text-[13px]">Clarity / Similarity</span>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Info className="h-3.5 w-3.5 text-zinc-500 hover:text-zinc-300 cursor-help transition-colors" />
+                          </TooltipTrigger>
+                          <TooltipContent className="bg-zinc-900 border border-zinc-800 text-zinc-300 max-w-[280px] p-3 shadow-xl">
+                            <p className="font-semibold text-zinc-100 mb-1">Similarity Boost</p>
+                            <p>Определяет, насколько сильно голос должен быть похож на оригинал при клонировании. Высокие значения требуют идеального качества аудио-исходника без шумов.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <span className="font-mono text-xs text-purple-400 bg-purple-950/20 px-1.5 py-0.5 rounded border border-purple-900/30">
+                        {Math.round(similarityBoost * 100)}%
+                      </span>
+                    </div>
+                    <Slider 
+                      value={[similarityBoost]} 
+                      onValueChange={(val) => setSimilarityBoost(val[0])} 
+                      max={1} 
+                      min={0} 
+                      step={0.01}
+                      className="[&>.relative>.bg-primary]:bg-purple-500 mt-1"
+                    />
+                    {!zenMode && (
+                      <div className="flex justify-between text-xs text-zinc-500">
+                        <span>Natural Variance</span>
+                        <span>High Similarity</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Style Exaggeration */}
+                  {selectedModelId !== 'eleven_flash_v2_5' && (
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center text-xs">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-zinc-300 font-semibold text-[13px]">Style Exaggeration</span>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Info className="h-3.5 w-3.5 text-zinc-500 hover:text-zinc-300 cursor-help transition-colors" />
+                            </TooltipTrigger>
+                            <TooltipContent className="bg-zinc-900 border border-zinc-800 text-zinc-300 max-w-[280px] p-3 shadow-xl">
+                              <p className="font-semibold text-zinc-100 mb-1">Style Exaggeration</p>
+                              <p>Добавляет экспрессии и преувеличивает стиль речи. Если выкрутить слишком сильно, голос может звучать неестественно. Рекомендуется держать на 0%.</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                        <span className="font-mono text-xs text-purple-400 bg-purple-950/20 px-1.5 py-0.5 rounded border border-purple-900/30">
+                          {Math.round(style * 100)}%
+                        </span>
+                      </div>
+                      <Slider 
+                        value={[style]} 
+                        onValueChange={(val) => setStyle(val[0])} 
+                        max={1} 
+                        min={0} 
+                        step={0.01}
+                        className="[&>.relative>.bg-primary]:bg-purple-500 mt-1"
+                      />
+                      {!zenMode && (
+                        <div className="flex justify-between text-xs text-zinc-500">
+                          <span>More Neutral</span>
+                          <span>Stronger Accent/Intonation</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </TooltipProvider>
 
                 {/* Speed */}
                 <div className="space-y-2">
