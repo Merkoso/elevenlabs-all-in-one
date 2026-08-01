@@ -32,12 +32,16 @@ import {
   Check,
   Mic,
   GripVertical,
-  Radio,
   ChevronDown,
   Smile,
   BookOpen,
   Sun,
-  Moon
+  Moon,
+  CheckSquare,
+  Square,
+  RotateCw,
+  SkipForward,
+  FolderArchive
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -59,7 +63,7 @@ import {
 import { getVoices, getVoice } from '@/app/actions/manage-voices';
 import { getModels, ElevenLabsModel } from '@/app/actions/manage-models';
 import { generateSpeechWorkbench, TtsWorkbenchRequest } from '@/app/actions/create-speech-workbench';
-import { generateSpeechToSpeech } from '@/app/actions/create-speech-to-speech';
+import { generateSpeechToSpeech, StsWorkbenchResponse } from '@/app/actions/create-speech-to-speech';
 import { createDialogueWorkbench, DialogueLineInput } from '@/app/actions/create-dialogue-workbench';
 import { getStoragePath, clearCache } from '@/app/actions/manage-audio';
 import { useKey } from '@/components/key-provider';
@@ -82,6 +86,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { getSubscriptionInfo } from '@/app/actions/manage-api-key';
 import JSZip from 'jszip';
+import { nanoid } from 'nanoid';
 
 function formatBytes(bytes: number, decimals = 1) {
   if (bytes === 0) return '0 Bytes';
@@ -94,7 +99,7 @@ function formatBytes(bytes: number, decimals = 1) {
 
 type HistoryItem = {
   id: string;
-  type: 'tts' | 'dialogue' | 'chunked' | 'sts';
+  type: 'tts' | 'dialogue' | 'chunked' | 'sts' | 'sts-batch';
   text: string;
   voiceId: string;
   voiceName: string;
@@ -122,6 +127,16 @@ type HistoryItem = {
   projectId?: string | null;
   groupId?: string | null;
   takeNumber?: number;
+  batchItems?: {
+    id: string;
+    originalName: string;
+    filename: string;
+    audioUrl: string;
+    voiceId: string;
+    voiceName: string;
+    processingTimeMs: number;
+    sizeBytes: number;
+  }[];
 };
 
 interface CustomVoice {
@@ -230,6 +245,48 @@ export default function TextToSpeechPage() {
       stsSourceAudioRef.current.pause();
     }
   };
+
+  // Voice-to-Voice Batch Mode State
+  const [stsMode, setStsMode] = useState<'single' | 'batch'>('single');
+  
+  type StsBatchItem = {
+    id: string;
+    file: File;
+    sourceUrl: string;
+    sourceBase64: string;
+    fileName: string;
+    fileSizeFormatted: string;
+    fileType: string;
+    status: 'pending' | 'processing' | 'success' | 'error' | 'skipped';
+    errorMsg?: string;
+    result?: StsWorkbenchResponse & { voiceName: string };
+    overrideVoiceId?: string;
+    selectedForZip?: boolean;
+  };
+
+  const [stsBatchItems, setStsBatchItems] = useState<StsBatchItem[]>([]);
+  const [isProcessingBatch, setIsProcessingBatch] = useState<boolean>(false);
+  const [currentBatchIndex, setCurrentBatchIndex] = useState<number>(-1);
+  const [regeneratingItemId, setRegeneratingItemId] = useState<string | null>(null);
+  const isSkippingItemRef = useRef<boolean>(false);
+  const activeGlobalAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  const handleGlobalAudioPlay = (audioElement: HTMLAudioElement) => {
+    if (activeGlobalAudioRef.current && activeGlobalAudioRef.current !== audioElement) {
+      activeGlobalAudioRef.current.pause();
+    }
+    activeGlobalAudioRef.current = audioElement;
+  };
+
+  useEffect(() => {
+    if (!isProcessingBatch) return;
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isProcessingBatch]);
   
   // Core Data
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1585,6 +1642,322 @@ export default function TextToSpeechPage() {
     setStsFileName(null);
     setStsFileSizeFormatted(null);
     setStsFileType(null);
+  };
+
+  const processBatchAudioFiles = (files: FileList | File[]) => {
+    const validFiles: File[] = Array.from(files).filter(file => {
+      if (!file.type.startsWith('audio/') && !/\.(mp3|wav|m4a|aac|ogg|flac|webm)$/i.test(file.name)) {
+        toast.error(`Skipped "${file.name}": Unsupported format.`);
+        return false;
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        toast.error(`Skipped "${file.name}": Exceeds 10MB limit.`);
+        return false;
+      }
+      return true;
+    });
+
+    if (validFiles.length === 0) return;
+
+    if (stsBatchItems.length + validFiles.length > 30) {
+      toast.warning('Batch size capped at 30 items max.');
+    }
+
+    const filesToProcess = validFiles.slice(0, 30 - stsBatchItems.length);
+
+    filesToProcess.forEach(file => {
+      const id = nanoid(8);
+      const url = URL.createObjectURL(file);
+      const extMatch = file.name.match(/\.([0-9a-z]+)$/i);
+      const ext = extMatch ? extMatch[1].toUpperCase() : 'AUDIO';
+
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onloadend = () => {
+        const base64data = reader.result as string;
+        const base64Raw = base64data.split(',')[1];
+
+        setStsBatchItems(prev => [
+          ...prev,
+          {
+            id,
+            file,
+            sourceUrl: url,
+            sourceBase64: base64Raw,
+            fileName: file.name,
+            fileSizeFormatted: formatBytes(file.size),
+            fileType: ext,
+            status: 'pending',
+            selectedForZip: true
+          }
+        ]);
+      };
+    });
+    toast.success(`Added ${filesToProcess.length} file(s) to batch queue.`);
+  };
+
+  const handleStsBatchFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      processBatchAudioFiles(e.target.files);
+    }
+  };
+
+  const handleRemoveBatchItem = (id: string) => {
+    setStsBatchItems(prev => {
+      const item = prev.find(it => it.id === id);
+      if (item?.sourceUrl?.startsWith('blob:')) {
+        URL.revokeObjectURL(item.sourceUrl);
+      }
+      return prev.filter(it => it.id !== id);
+    });
+  };
+
+  const handleClearAllBatchItems = () => {
+    stsBatchItems.forEach(it => {
+      if (it.sourceUrl?.startsWith('blob:')) {
+        URL.revokeObjectURL(it.sourceUrl);
+      }
+    });
+    setStsBatchItems([]);
+  };
+
+  const handleToggleSelectAllZip = (checked: boolean) => {
+    setStsBatchItems(prev => prev.map(it => ({ ...it, selectedForZip: checked })));
+  };
+
+  const handleToggleSelectItemZip = (id: string) => {
+    setStsBatchItems(prev => prev.map(it => (it.id === id ? { ...it, selectedForZip: !it.selectedForZip } : it)));
+  };
+
+  const handleSkipCurrentBatchItem = () => {
+    isSkippingItemRef.current = true;
+    toast.info('Skipping current file...');
+  };
+
+  const handleProcessBatch = async () => {
+    if (stsBatchItems.length === 0) {
+      toast.error('Batch queue is empty. Upload audio files first.');
+      return;
+    }
+    if (!selectedVoiceId) {
+      toast.error('Please select a target voice.');
+      return;
+    }
+
+    setIsProcessingBatch(true);
+    const startMs = Date.now();
+
+    for (let i = 0; i < stsBatchItems.length; i++) {
+      const item = stsBatchItems[i];
+      if (item.status === 'success') continue;
+
+      setCurrentBatchIndex(i);
+      isSkippingItemRef.current = false;
+
+      setStsBatchItems(prev =>
+        prev.map((it, idx) => (idx === i ? { ...it, status: 'processing', errorMsg: undefined } : it))
+      );
+
+      if (isSkippingItemRef.current) {
+        setStsBatchItems(prev =>
+          prev.map((it, idx) => (idx === i ? { ...it, status: 'skipped' } : it))
+        );
+        continue;
+      }
+
+      const targetVoice = item.overrideVoiceId || selectedVoiceId;
+      const vName = voices.find(v => v.voiceId === targetVoice)?.name || 'Unknown';
+
+      const res = await generateSpeechToSpeech({
+        audioBase64: item.sourceBase64,
+        voiceId: targetVoice,
+        modelId: selectedModelId || 'eleven_multilingual_sts_v2',
+        stability,
+        similarityBoost,
+        style,
+        useSpeakerBoost,
+        outputFormat,
+        removeBackgroundNoise
+      });
+
+      if (isSkippingItemRef.current) {
+        setStsBatchItems(prev =>
+          prev.map((it, idx) => (idx === i ? { ...it, status: 'skipped' } : it))
+        );
+        continue;
+      }
+
+      if (res.ok) {
+        const data = res.value;
+        const { url } = base64ToBlob(data.audioBase64, data.filename);
+        const resultWithVoice = {
+          ...data,
+          voiceName: vName,
+          audioUrl: url
+        };
+
+        setStsBatchItems(prev =>
+          prev.map((it, idx) => (idx === i ? { ...it, status: 'success', result: resultWithVoice } : it))
+        );
+      } else {
+        const errText = res.error;
+        setStsBatchItems(prev =>
+          prev.map((it, idx) => (idx === i ? { ...it, status: 'error', errorMsg: errText } : it))
+        );
+
+        if (/quota|insufficient|credit|payment|balance/i.test(errText)) {
+          toast.error('Batch stopped: Insufficient API quota/credits.');
+          break;
+        }
+      }
+    }
+
+    setIsProcessingBatch(false);
+    setCurrentBatchIndex(-1);
+
+    setStsBatchItems(currentItems => {
+      const successes = currentItems.filter(it => it.status === 'success' && it.result);
+      if (successes.length > 0) {
+        const mainVoiceName = voices.find(v => v.voiceId === selectedVoiceId)?.name || 'Batch';
+        saveToHistory({
+          id: nanoid(10),
+          type: 'sts-batch',
+          text: `[Voice-to-Voice Batch: ${successes.length} files]`,
+          voiceId: selectedVoiceId,
+          voiceName: mainVoiceName,
+          modelId: selectedModelId || 'eleven_multilingual_sts_v2',
+          seed: null,
+          stability,
+          similarityBoost,
+          style,
+          speed: 1,
+          useSpeakerBoost,
+          outputFormat,
+          applyTextNormalization: 'auto',
+          requestId: null,
+          characterCost: null,
+          filename: `batch_${nanoid(6)}.zip`,
+          processingTimeMs: Date.now() - startMs,
+          sizeBytes: successes.reduce((acc, it) => acc + (it.result?.sizeBytes || 0), 0),
+          batchItems: successes.map(it => ({
+            id: it.id,
+            originalName: it.fileName,
+            filename: it.result!.filename,
+            audioUrl: it.result!.audioUrl,
+            voiceId: it.overrideVoiceId || selectedVoiceId,
+            voiceName: it.result!.voiceName,
+            processingTimeMs: it.result!.processingTimeMs,
+            sizeBytes: it.result!.sizeBytes
+          }))
+        }, '');
+        toast.success(`Batch completed! ${successes.length} file(s) converted.`);
+      }
+      return currentItems;
+    });
+  };
+
+  const handleRegenerateBatchItem = async (itemId: string) => {
+    const item = stsBatchItems.find(it => it.id === itemId);
+    if (!item) return;
+
+    setRegeneratingItemId(itemId);
+    const targetVoice = item.overrideVoiceId || selectedVoiceId;
+    const vName = voices.find(v => v.voiceId === targetVoice)?.name || 'Unknown';
+
+    const res = await generateSpeechToSpeech({
+      audioBase64: item.sourceBase64,
+      voiceId: targetVoice,
+      modelId: selectedModelId || 'eleven_multilingual_sts_v2',
+      stability,
+      similarityBoost,
+      style,
+      useSpeakerBoost,
+      outputFormat,
+      removeBackgroundNoise
+    });
+
+    setRegeneratingItemId(null);
+
+    if (res.ok) {
+      const data = res.value;
+      const { url } = base64ToBlob(data.audioBase64, data.filename);
+      const resultWithVoice = {
+        ...data,
+        voiceName: vName,
+        audioUrl: url
+      };
+
+      setStsBatchItems(prev =>
+        prev.map(it => (it.id === itemId ? { ...it, status: 'success', result: resultWithVoice, errorMsg: undefined } : it))
+      );
+      toast.success(`File "${item.fileName}" regenerated.`);
+    } else {
+      toast.error(`Regeneration failed: ${res.error}`);
+    }
+  };
+
+  const handleDownloadBatchZip = async () => {
+    const targets = stsBatchItems.filter(it => it.selectedForZip && it.status === 'success' && it.result);
+    if (targets.length === 0) {
+      toast.error('No successful files selected for ZIP download.');
+      return;
+    }
+
+    const zip = new JSZip();
+    const folder = zip.folder('v2v_converted_audio');
+
+    for (const item of targets) {
+      if (item.result?.audioBase64) {
+        folder?.file(item.result.filename || `converted_${item.fileName}`, item.result.audioBase64, { base64: true });
+      } else if (item.result?.audioUrl) {
+        try {
+          const resp = await fetch(item.result.audioUrl);
+          const blob = await resp.blob();
+          folder?.file(item.result.filename || `converted_${item.fileName}`, blob);
+        } catch (e) {
+          console.error('Failed to fetch file for ZIP:', e);
+        }
+      }
+    }
+
+    const mainVoice = voices.find(v => v.voiceId === selectedVoiceId)?.name || 'sts';
+    const zipName = `v2v_batch_${mainVoice.replace(/\s+/g, '_')}_${targets.length}_files.zip`;
+
+    const content = await zip.generateAsync({ type: 'blob' });
+    const blobUrl = URL.createObjectURL(content);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = zipName;
+    a.click();
+    URL.revokeObjectURL(blobUrl);
+    toast.success(`Downloaded ${zipName}`);
+  };
+
+  const handleDownloadHistoryBatchZip = async (historyItem: HistoryItem) => {
+    if (!historyItem.batchItems || historyItem.batchItems.length === 0) return;
+    toast.info('Preparing ZIP archive from history...');
+    const zip = new JSZip();
+    const folder = zip.folder('v2v_converted_audio');
+
+    for (const item of historyItem.batchItems) {
+      try {
+        const resp = await fetch(item.audioUrl);
+        const blob = await resp.blob();
+        folder?.file(item.filename || item.originalName, blob);
+      } catch (e) {
+        console.error('Failed to fetch history file for ZIP:', e);
+      }
+    }
+
+    const zipName = `v2v_history_batch_${historyItem.voiceName.replace(/\s+/g, '_')}.zip`;
+    const content = await zip.generateAsync({ type: 'blob' });
+    const blobUrl = URL.createObjectURL(content);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = zipName;
+    a.click();
+    URL.revokeObjectURL(blobUrl);
+    toast.success(`Downloaded ${zipName}`);
   };
 
   const handleGenerateSTS = async () => {
@@ -4129,8 +4502,6 @@ return (
                     >
                       {isApiKeyMissing ? (
                         'API Key Required'
-                      ) : rateLimitSeconds > 0 ? (
-                        `ElevenLabs просит подождать... ${rateLimitSeconds}с`
                       ) : isGenerating ? (
                         <>
                           <div className="mini-wave-container">
@@ -4157,119 +4528,429 @@ return (
               <Card className="border-zinc-800 bg-zinc-950/20">
                 <CardHeader className="p-5 pb-3">
                   <CardTitle className="text-sm font-semibold flex items-center justify-between">
-                    <span>Voice-to-Voice (Speech-to-Speech)</span>
+                    <div className="flex items-center gap-3">
+                      <span>Voice-to-Voice (Speech-to-Speech)</span>
+                      <div className="flex items-center gap-1 p-0.5 bg-zinc-900 border border-zinc-800 rounded-md">
+                        <button
+                          type="button"
+                          onClick={() => setStsMode('single')}
+                          className={`px-2.5 py-0.5 text-xs font-semibold rounded transition-all ${
+                            stsMode === 'single' ? 'bg-purple-600 text-white shadow' : 'text-zinc-400 hover:text-zinc-200'
+                          }`}
+                        >
+                          Single
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setStsMode('batch')}
+                          className={`px-2.5 py-0.5 text-xs font-semibold rounded transition-all flex items-center gap-1 ${
+                            stsMode === 'batch' ? 'bg-purple-600 text-white shadow' : 'text-zinc-400 hover:text-zinc-200'
+                          }`}
+                        >
+                          <Layers className="h-3 w-3" />
+                          Batch ({stsBatchItems.length})
+                        </button>
+                      </div>
+                    </div>
                     {!zenMode && (
                       <span className="text-xs text-zinc-500 font-normal">Change input voice to target voice</span>
                     )}
                   </CardTitle>
                   {!zenMode && (
                     <CardDescription className="text-xs text-zinc-500 mt-1 leading-normal">
-                      Record your own voice from the microphone or upload an audio file. The AI will convert it to the selected target voice, preserving your exact intonation, emotion, and pace.
+                      Record or upload audio files. The AI will convert them to the selected target voice, preserving intonation, emotion, and pace.
                     </CardDescription>
                   )}
                 </CardHeader>
                 <CardContent className="px-5 pb-5 pt-0 space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Record section */}
-                    <div className="border border-zinc-850 rounded-lg p-5 bg-zinc-900/30 flex flex-col items-center justify-center text-center space-y-3.5 min-h-[150px]">
-                      <span className="text-sm font-semibold text-zinc-300">Option 1: Record from Microphone</span>
-                      
-                      {isRecording ? (
-                        <div className="flex flex-col items-center space-y-2.5">
-                          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-red-950/30 border border-red-800/40 rounded-full text-red-400 text-xs animate-pulse font-mono">
-                            <span className="h-2 w-2 rounded-full bg-red-500 animate-ping" />
-                            Recording: {Math.floor(recordingTime / 60)}:{(recordingTime % 60).toString().padStart(2, '0')}
-                          </div>
-                          <Button 
-                            variant="destructive" 
-                            size="sm" 
-                            onClick={stopRecording}
-                            className="text-xs font-bold h-10 px-4 shadow-md"
-                          >
-                            <Trash className="h-3.5 w-3.5 mr-1" /> Stop & Save
-                          </Button>
-                        </div>
-                      ) : (
-                        <Button 
-                          onClick={startRecording}
-                          className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold h-10 px-4 shadow-md transition-all active:translate-y-[1px]"
-                        >
-                          <Mic className="h-3.5 w-3.5 mr-1.5 animate-pulse" /> Start Recording
-                        </Button>
-                      )}
-                    </div>
-
-                    {/* Upload section with Drag & Drop */}
-                    <div 
-                      onDragOver={handleStsDragOver}
-                      onDragLeave={handleStsDragLeave}
-                      onDrop={handleStsDrop}
-                      onClick={() => document.getElementById('sts-file-upload')?.click()}
-                      className={`border rounded-lg p-5 flex flex-col items-center justify-center text-center space-y-3.5 min-h-[150px] relative cursor-pointer transition-all duration-200 ${
-                        isDraggingStsFile 
-                          ? 'border-purple-500 bg-purple-500/15 scale-[1.02] shadow-xl shadow-purple-500/20 ring-2 ring-purple-500/40' 
-                          : 'border-zinc-850 bg-zinc-900/30 hover:border-purple-600/50 hover:bg-purple-950/20 group'
-                      }`}
-                    >
-                      <input 
-                        type="file" 
-                        id="sts-file-upload" 
-                        accept="audio/*" 
-                        onChange={handleStsFileChange} 
-                        className="hidden" 
-                      />
-
-                      {isDraggingStsFile ? (
-                        <div className="flex flex-col items-center space-y-2 pointer-events-none">
-                          <Upload className="h-8 w-8 text-purple-400 animate-bounce" />
-                          <span className="text-sm font-bold text-purple-300">Drop Audio File Here</span>
-                          <span className="text-xs text-purple-400/80">WAV, MP3, M4A, AAC, OGG up to 10MB</span>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="p-2.5 rounded-full bg-zinc-800/80 group-hover:bg-purple-900/40 group-hover:text-purple-400 text-zinc-400 transition-colors">
-                            <Upload className="h-5 w-5" />
-                          </div>
-                          <div className="space-y-1">
-                            <span className="text-sm font-semibold text-zinc-200 group-hover:text-purple-300 transition-colors block">
-                              Option 2: Drag & Drop or Click to Upload
-                            </span>
-                            <p className="text-xs text-zinc-500">Supports WAV, MP3, M4A up to 10MB</p>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  {stsSourceAudioUrl && (
-                    <div className="border border-purple-900/30 rounded-lg p-3.5 bg-purple-950/10 space-y-2.5">
-                      <div className="flex justify-between items-center text-xs">
-                        <div className="flex items-center gap-2 overflow-hidden">
-                          <Volume2 className="h-4 w-4 text-purple-400 shrink-0" />
-                          <span className="font-semibold text-zinc-200 truncate">
-                            {stsFileName || 'Source Audio Preview'}
-                          </span>
-                          {stsFileType && (
-                            <span className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-purple-900/50 text-purple-300 rounded border border-purple-700/40 uppercase shrink-0">
-                              {stsFileType}
-                            </span>
-                          )}
-                          {stsFileSizeFormatted && (
-                            <span className="text-[10px] text-zinc-500 shrink-0 font-mono">
-                              ({stsFileSizeFormatted})
-                            </span>
+                  {stsMode === 'single' ? (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Record section */}
+                        <div className="border border-zinc-855 rounded-lg p-5 bg-zinc-900/30 flex flex-col items-center justify-center text-center space-y-3.5 min-h-[150px]">
+                          <span className="text-sm font-semibold text-zinc-300">Option 1: Record from Microphone</span>
+                          
+                          {isRecording ? (
+                            <div className="flex flex-col items-center space-y-2.5">
+                              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-red-950/30 border border-red-800/40 rounded-full text-red-400 text-xs animate-pulse font-mono">
+                                <span className="h-2 w-2 rounded-full bg-red-500 animate-ping" />
+                                Recording: {Math.floor(recordingTime / 60)}:{(recordingTime % 60).toString().padStart(2, '0')}
+                              </div>
+                              <Button 
+                                variant="destructive" 
+                                size="sm" 
+                                onClick={stopRecording}
+                                className="text-xs font-bold h-10 px-4 shadow-md"
+                              >
+                                <Trash className="h-3.5 w-3.5 mr-1" /> Stop & Save
+                              </Button>
+                            </div>
+                          ) : (
+                            <Button 
+                              onClick={startRecording}
+                              className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold h-10 px-4 shadow-md transition-all active:translate-y-[1px]"
+                            >
+                              <Mic className="h-3.5 w-3.5 mr-1.5 animate-pulse" /> Start Recording
+                            </Button>
                           )}
                         </div>
-                        <Button 
-                          variant="link" 
-                          size="sm" 
-                          onClick={handleClearStsSource}
-                          className="h-auto p-0 text-red-400 hover:text-red-300 text-xs font-semibold shrink-0"
+
+                        {/* Upload section with Drag & Drop */}
+                        <div 
+                          onDragOver={handleStsDragOver}
+                          onDragLeave={handleStsDragLeave}
+                          onDrop={handleStsDrop}
+                          onClick={() => document.getElementById('sts-file-upload')?.click()}
+                          className={`border rounded-lg p-5 flex flex-col items-center justify-center text-center space-y-3.5 min-h-[150px] relative cursor-pointer transition-all duration-200 ${
+                            isDraggingStsFile 
+                              ? 'border-purple-500 bg-purple-500/15 scale-[1.02] shadow-xl shadow-purple-500/20 ring-2 ring-purple-500/40' 
+                              : 'border-zinc-850 bg-zinc-900/30 hover:border-purple-600/50 hover:bg-purple-950/20 group'
+                          }`}
                         >
-                          Clear
-                        </Button>
+                          <input 
+                            type="file" 
+                            id="sts-file-upload" 
+                            accept="audio/*" 
+                            onChange={handleStsFileChange} 
+                            className="hidden" 
+                          />
+
+                          {isDraggingStsFile ? (
+                            <div className="flex flex-col items-center space-y-2 pointer-events-none">
+                              <Upload className="h-8 w-8 text-purple-400 animate-bounce" />
+                              <span className="text-sm font-bold text-purple-300">Drop Audio File Here</span>
+                              <span className="text-xs text-purple-400/80">WAV, MP3, M4A, AAC, OGG up to 10MB</span>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="p-2.5 rounded-full bg-zinc-800/80 group-hover:bg-purple-900/40 group-hover:text-purple-400 text-zinc-400 transition-colors">
+                                <Upload className="h-5 w-5" />
+                              </div>
+                              <div className="space-y-1">
+                                <span className="text-sm font-semibold text-zinc-200 group-hover:text-purple-300 transition-colors block">
+                                  Option 2: Drag & Drop or Click to Upload
+                                </span>
+                                <p className="text-xs text-zinc-500">Supports WAV, MP3, M4A up to 10MB</p>
+                              </div>
+                            </>
+                          )}
+                        </div>
                       </div>
-                      <audio src={stsSourceAudioUrl} controls className="w-full h-9 bg-zinc-900 rounded" />
+
+                      {stsSourceAudioUrl && (
+                        <div className="border border-purple-900/30 rounded-lg p-3.5 bg-purple-950/10 space-y-2.5">
+                          <div className="flex justify-between items-center text-xs">
+                            <div className="flex items-center gap-2 overflow-hidden">
+                              <Volume2 className="h-4 w-4 text-purple-400 shrink-0" />
+                              <span className="font-semibold text-zinc-200 truncate">
+                                {stsFileName || 'Source Audio Preview'}
+                              </span>
+                              {stsFileType && (
+                                <span className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-purple-900/50 text-purple-300 rounded border border-purple-700/40 uppercase shrink-0">
+                                  {stsFileType}
+                                </span>
+                              )}
+                              {stsFileSizeFormatted && (
+                                <span className="text-[10px] text-zinc-500 shrink-0 font-mono">
+                                  ({stsFileSizeFormatted})
+                                </span>
+                              )}
+                            </div>
+                            <Button 
+                              variant="link" 
+                              size="sm" 
+                              onClick={handleClearStsSource}
+                              className="h-auto p-0 text-red-400 hover:text-red-300 text-xs font-semibold shrink-0"
+                            >
+                              Clear
+                            </Button>
+                          </div>
+                          <audio src={stsSourceAudioUrl} controls className="w-full h-9 bg-zinc-900 rounded" />
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    /* Batch Mode UI */
+                    <div className="space-y-4">
+                      {/* Batch Dropzone */}
+                      <div 
+                        onDragOver={handleStsDragOver}
+                        onDragLeave={handleStsDragLeave}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setIsDraggingStsFile(false);
+                          if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                            processBatchAudioFiles(e.dataTransfer.files);
+                          }
+                        }}
+                        onClick={() => document.getElementById('sts-batch-file-upload')?.click()}
+                        className={`border rounded-lg p-5 flex flex-col items-center justify-center text-center space-y-2.5 min-h-[130px] relative cursor-pointer transition-all duration-200 ${
+                          isDraggingStsFile 
+                            ? 'border-purple-500 bg-purple-500/15 scale-[1.01] ring-2 ring-purple-500/40' 
+                            : 'border-zinc-850 bg-zinc-900/30 hover:border-purple-600/50 hover:bg-purple-950/20 group'
+                        }`}
+                      >
+                        <input 
+                          type="file" 
+                          id="sts-batch-file-upload" 
+                          accept="audio/*" 
+                          multiple 
+                          onChange={handleStsBatchFileChange} 
+                          className="hidden" 
+                        />
+                        <div className="p-2.5 rounded-full bg-zinc-800/80 group-hover:bg-purple-900/40 group-hover:text-purple-400 text-zinc-400 transition-colors">
+                          <FolderOpen className="h-5 w-5" />
+                        </div>
+                        <div className="space-y-0.5">
+                          <span className="text-sm font-semibold text-zinc-200 group-hover:text-purple-300 transition-colors block">
+                            Drag & Drop Multiple Files or Click to Browse
+                          </span>
+                          <p className="text-xs text-zinc-500">Upload up to 30 audio files (WAV, MP3, M4A up to 10MB each)</p>
+                        </div>
+                      </div>
+
+                      {/* Batch Queue Section */}
+                      {stsBatchItems.length > 0 && (
+                        <div className="space-y-3 pt-2">
+                          {/* Batch Controls Header */}
+                          <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-zinc-900/60 border border-zinc-850 rounded-lg">
+                            <div className="flex items-center gap-3">
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                onClick={() => handleToggleSelectAllZip(!stsBatchItems.every(it => it.selectedForZip))}
+                                className="h-7 px-2 text-xs font-semibold text-zinc-400 hover:text-white gap-1.5"
+                              >
+                                {stsBatchItems.every(it => it.selectedForZip) ? (
+                                  <CheckSquare className="h-4 w-4 text-purple-400" />
+                                ) : (
+                                  <Square className="h-4 w-4 text-zinc-500" />
+                                )}
+                                Select All for ZIP
+                              </Button>
+                              <span className="text-xs text-zinc-500">
+                                Queue: <strong className="text-zinc-200">{stsBatchItems.length}</strong> | Done: <strong className="text-green-400">{stsBatchItems.filter(it => it.status === 'success').length}</strong>
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              {stsBatchItems.some(it => it.status === 'success') && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={handleDownloadBatchZip}
+                                  className="bg-purple-950/40 border-purple-800/40 hover:bg-purple-900/60 text-purple-300 text-xs font-semibold h-8 gap-1.5"
+                                >
+                                  <FolderArchive className="h-3.5 w-3.5 text-purple-400" />
+                                  Download Selected ZIP ({stsBatchItems.filter(it => it.selectedForZip && it.status === 'success').length})
+                                </Button>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={handleClearAllBatchItems}
+                                disabled={isProcessingBatch}
+                                className="h-8 px-2.5 text-xs text-zinc-400 hover:text-red-400"
+                              >
+                                Clear Queue
+                              </Button>
+                            </div>
+                          </div>
+
+                          {/* Real-time Progress Bar */}
+                          {isProcessingBatch && (
+                            <div className="p-3 bg-purple-950/30 border border-purple-800/40 rounded-lg space-y-2">
+                              <div className="flex justify-between items-center text-xs text-purple-300 font-medium">
+                                <div className="flex items-center gap-2">
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin text-purple-400" />
+                                  <span>
+                                    Processing file {currentBatchIndex + 1} of {stsBatchItems.length}: <strong className="text-white">{stsBatchItems[currentBatchIndex]?.fileName}</strong>
+                                  </span>
+                                </div>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={handleSkipCurrentBatchItem}
+                                  className="h-6 px-2 text-[10px] bg-purple-900/40 border-purple-700/50 text-purple-200 hover:bg-purple-800"
+                                >
+                                  <SkipForward className="h-3 w-3 mr-1" /> Skip File
+                                </Button>
+                              </div>
+                              <div className="h-1.5 w-full bg-zinc-900 rounded-full overflow-hidden">
+                                <div 
+                                  className="h-full bg-purple-500 transition-all duration-300" 
+                                  style={{ width: `${((currentBatchIndex + 1) / stsBatchItems.length) * 100}%` }}
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Batch Items List */}
+                          <div className="space-y-2.5 max-h-[500px] overflow-y-auto pr-1">
+                            {stsBatchItems.map((item, idx) => (
+                              <div
+                                key={item.id}
+                                className={`p-3 rounded-lg border transition-all space-y-2 ${
+                                  item.status === 'processing'
+                                    ? 'border-purple-500 bg-purple-950/20 ring-1 ring-purple-500/30'
+                                    : item.status === 'success'
+                                    ? 'border-zinc-800 bg-zinc-900/40'
+                                    : item.status === 'error'
+                                    ? 'border-red-900/40 bg-red-950/10'
+                                    : 'border-zinc-850 bg-zinc-950/40'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2 text-xs">
+                                  <div className="flex items-center gap-2 overflow-hidden">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleToggleSelectItemZip(item.id)}
+                                      className="text-zinc-400 hover:text-white"
+                                    >
+                                      {item.selectedForZip ? (
+                                        <CheckSquare className="h-4 w-4 text-purple-400 shrink-0" />
+                                      ) : (
+                                        <Square className="h-4 w-4 text-zinc-600 shrink-0" />
+                                      )}
+                                    </button>
+                                    <span className="font-mono text-zinc-500 text-[10px]">#{idx + 1}</span>
+                                    <span className="font-semibold text-zinc-200 truncate">{item.fileName}</span>
+                                    <span className="text-[10px] text-zinc-500 font-mono">({item.fileSizeFormatted})</span>
+                                  </div>
+
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    {/* Status Badge */}
+                                    {item.status === 'pending' && (
+                                      <span className="px-2 py-0.5 text-[10px] bg-zinc-800 text-zinc-400 rounded font-medium">
+                                        Pending
+                                      </span>
+                                    )}
+                                    {item.status === 'processing' && (
+                                      <span className="px-2 py-0.5 text-[10px] bg-purple-900/60 text-purple-300 rounded font-semibold animate-pulse flex items-center gap-1">
+                                        <Loader2 className="h-3 w-3 animate-spin" /> Converting
+                                      </span>
+                                    )}
+                                    {item.status === 'success' && (
+                                      <span className="px-2 py-0.5 text-[10px] bg-green-950/60 text-green-300 border border-green-800/40 rounded font-semibold">
+                                        Done ({item.result?.voiceName})
+                                      </span>
+                                    )}
+                                    {item.status === 'error' && (
+                                      <span className="px-2 py-0.5 text-[10px] bg-red-950/60 text-red-300 border border-red-800/40 rounded font-semibold truncate max-w-[150px]">
+                                        Failed
+                                      </span>
+                                    )}
+
+                                    {/* Per-item Voice Override dropdown */}
+                                    <DropdownMenu>
+                                      <DropdownMenuTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-6 px-1.5 text-[10px] text-zinc-400 hover:text-zinc-200"
+                                          title="Override Target Voice for this file"
+                                        >
+                                          <Settings className="h-3 w-3 mr-1" />
+                                          {voices.find(v => v.voiceId === (item.overrideVoiceId || selectedVoiceId))?.name || 'Voice'}
+                                        </Button>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent align="end" className="bg-zinc-900 border-zinc-800 text-xs max-h-48 overflow-y-auto">
+                                        {voices.map(v => (
+                                          <DropdownMenuItem
+                                            key={v.voiceId}
+                                            onClick={() =>
+                                              setStsBatchItems(prev =>
+                                                prev.map(it => (it.id === item.id ? { ...it, overrideVoiceId: v.voiceId } : it))
+                                              )
+                                            }
+                                            className="cursor-pointer"
+                                          >
+                                            {v.name}
+                                          </DropdownMenuItem>
+                                        ))}
+                                      </DropdownMenuContent>
+                                    </DropdownMenu>
+
+                                    {/* Regenerate Button */}
+                                    {item.status === 'success' && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        disabled={regeneratingItemId === item.id || isProcessingBatch}
+                                        onClick={() => handleRegenerateBatchItem(item.id)}
+                                        className="h-6 px-2 text-[10px] bg-zinc-900 border-zinc-750 text-zinc-300 hover:text-purple-300"
+                                        title="Regenerate single file"
+                                      >
+                                        {regeneratingItemId === item.id ? (
+                                          <Loader2 className="h-3 w-3 animate-spin" />
+                                        ) : (
+                                          <>
+                                            <RotateCw className="h-3 w-3 mr-1" /> Regen
+                                          </>
+                                        )}
+                                      </Button>
+                                    )}
+
+                                    {/* Remove button */}
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => handleRemoveBatchItem(item.id)}
+                                      disabled={isProcessingBatch}
+                                      className="h-6 w-6 text-zinc-500 hover:text-red-400"
+                                    >
+                                      <Trash className="h-3 w-3" />
+                                    </Button>
+                                  </div>
+                                </div>
+
+                                {/* Error Message if any */}
+                                {item.status === 'error' && item.errorMsg && (
+                                  <div className="text-[11px] text-red-400 bg-red-950/30 p-2 rounded border border-red-900/40">
+                                    {item.errorMsg}
+                                  </div>
+                                )}
+
+                                {/* A/B Comparison Players for successful items */}
+                                {item.status === 'success' && item.result && (
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-zinc-855/60">
+                                    <div className="space-y-1">
+                                      <span className="text-[9px] font-bold uppercase tracking-wider text-zinc-500">
+                                        Source: {item.fileName}
+                                      </span>
+                                      <audio
+                                        src={item.sourceUrl}
+                                        onPlay={e => handleGlobalAudioPlay(e.currentTarget)}
+                                        controls
+                                        className="w-full h-7 bg-zinc-950 rounded text-xs"
+                                      />
+                                    </div>
+                                    <div className="space-y-1">
+                                      <span className="text-[9px] font-bold uppercase tracking-wider text-purple-400 flex items-center justify-between">
+                                        <span>Result: {item.result.voiceName}</span>
+                                        <a
+                                          href={item.result.audioUrl}
+                                          download={item.result.filename}
+                                          className="text-purple-400 hover:underline flex items-center gap-0.5"
+                                        >
+                                          <Download className="h-2.5 w-2.5" /> Save
+                                        </a>
+                                      </span>
+                                      <audio
+                                        src={item.result.audioUrl}
+                                        onPlay={e => handleGlobalAudioPlay(e.currentTarget)}
+                                        controls
+                                        className="w-full h-7 bg-zinc-950 rounded text-xs"
+                                      />
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -4285,29 +4966,51 @@ return (
                       </Label>
                     </div>
 
-                    <Button 
-                      disabled={isConvertingSTS || !stsSourceAudioBase64 || !selectedVoiceId || isApiKeyMissing}
-                      onClick={handleGenerateSTS}
-                      className="btn-interactive-lift bg-purple-600 hover:bg-purple-700 text-white font-bold text-sm rounded-md min-w-[180px] h-10 w-full sm:w-auto"
-                    >
-                      {isApiKeyMissing ? (
-                        'API Key Required'
-                      ) : isConvertingSTS ? (
-                        <>
-                          <div className="mini-wave-container">
-                            <span className="mini-wave-bar" />
-                            <span className="mini-wave-bar" />
-                            <span className="mini-wave-bar" />
-                          </div>
-                          Converting...
-                        </>
-                      ) : (
-                        <>
-                          <Radio className="h-4 w-4 mr-1.5" />
-                          Convert Voice
-                        </>
-                      )}
-                    </Button>
+                    {stsMode === 'single' ? (
+                      <Button 
+                        disabled={isConvertingSTS || !stsSourceAudioBase64 || !selectedVoiceId || isApiKeyMissing}
+                        onClick={handleGenerateSTS}
+                        className="btn-interactive-lift bg-purple-600 hover:bg-purple-700 text-white font-bold text-sm rounded-md min-w-[180px] h-10 w-full sm:w-auto"
+                      >
+                        {isApiKeyMissing ? (
+                          'API Key Required'
+                        ) : isConvertingSTS ? (
+                          <>
+                            <div className="mini-wave-container">
+                              <span className="mini-wave-bar" />
+                              <span className="mini-wave-bar" />
+                              <span className="mini-wave-bar" />
+                            </div>
+                            Converting...
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="h-4 w-4 mr-1.5" />
+                            Convert Voice
+                          </>
+                        )}
+                      </Button>
+                    ) : (
+                      <Button 
+                        disabled={isProcessingBatch || stsBatchItems.length === 0 || !selectedVoiceId || isApiKeyMissing}
+                        onClick={handleProcessBatch}
+                        className="btn-interactive-lift bg-purple-600 hover:bg-purple-700 text-white font-bold text-sm rounded-md min-w-[200px] h-10 w-full sm:w-auto"
+                      >
+                        {isApiKeyMissing ? (
+                          'API Key Required'
+                        ) : isProcessingBatch ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Processing Batch...
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="h-4 w-4 mr-1.5" />
+                            Convert Batch ({stsBatchItems.length} Files)
+                          </>
+                        )}
+                      </Button>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -4782,9 +5485,9 @@ return (
                       <Card key={item.id} className="border-zinc-850 bg-zinc-950/40 relative flex flex-col justify-between group/card hover:border-purple-900/40 hover:shadow-lg hover:shadow-purple-950/10 transition-all duration-300 [content-visibility:auto] [contain-intrinsic-size:auto_180px]">
                         <CardHeader className="py-3 flex flex-row items-center justify-between border-b border-zinc-900 space-y-0">
                           <div className="flex items-center gap-1.5">
-                            <span className={`h-2 w-2 rounded-full ${item.type === 'dialogue' ? 'bg-blue-400' : item.type === 'chunked' ? 'bg-yellow-400' : item.type === 'sts' ? 'bg-purple-400' : 'bg-green-400'}`} />
+                            <span className={`h-2 w-2 rounded-full ${item.type === 'dialogue' ? 'bg-blue-400' : item.type === 'chunked' ? 'bg-yellow-400' : item.type === 'sts' || item.type === 'sts-batch' ? 'bg-purple-400' : 'bg-green-400'}`} />
                             <span className="text-[11px] font-bold text-zinc-400 capitalize">
-                              {item.type === 'sts' ? 'Voice Conversion' : item.type} Take
+                              {item.type === 'sts-batch' ? 'Voice Batch' : item.type === 'sts' ? 'Voice Conversion' : item.type} Take
                             </span>
                           </div>
                           <div className="flex items-center gap-2">
@@ -4843,9 +5546,34 @@ return (
                           </div>
 
                           {/* Playback or delete feedback */}
-                          {item.existsOnServer ? (
+                          {item.type === 'sts-batch' ? (
+                            <div className="space-y-2 pt-1">
+                              <div className="flex justify-between items-center text-xs">
+                                <span className="font-semibold text-purple-300">
+                                  Batch Files ({item.batchItems?.length || 0})
+                                </span>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleDownloadHistoryBatchZip(item)}
+                                  className="h-6 px-2 text-[10px] bg-purple-950/40 border-purple-800/40 text-purple-300 hover:bg-purple-900/60 gap-1"
+                                >
+                                  <FolderArchive className="h-3 w-3" /> Download ZIP
+                                </Button>
+                              </div>
+                              <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
+                                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                                {item.batchItems?.map((b: any) => (
+                                  <div key={b.id} className="p-1.5 bg-zinc-900/60 rounded border border-zinc-850 text-xs flex justify-between items-center gap-2">
+                                    <span className="truncate text-zinc-300 font-mono text-[10px] max-w-[140px]">{b.originalName}</span>
+                                    <audio src={b.audioUrl} controls className="h-6 w-36 shrink-0" onPlay={e => handleGlobalAudioPlay(e.currentTarget)} />
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : item.existsOnServer ? (
                             <div className="flex items-center gap-2 bg-zinc-900/40 border border-zinc-800 rounded p-2">
-                              <audio src={item.audioUrl} controls className="h-6 w-full text-[10px]" />
+                              <audio src={item.audioUrl} controls className="h-6 w-full text-[10px]" onPlay={e => handleGlobalAudioPlay(e.currentTarget)} />
                             </div>
                           ) : (
                             <div className="flex items-center gap-1.5 p-2 bg-red-950/15 border border-red-900/20 text-red-400 rounded text-xs">

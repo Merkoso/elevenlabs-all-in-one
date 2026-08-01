@@ -1,6 +1,6 @@
 export type ClientHistoryItem = {
   id: string;
-  type: 'tts' | 'dialogue' | 'chunked' | 'sts';
+  type: 'tts' | 'dialogue' | 'chunked' | 'sts' | 'sts-batch';
   text: string;
   voiceId: string;
   voiceName: string;
@@ -28,6 +28,16 @@ export type ClientHistoryItem = {
   isBestTake?: boolean; // Protect from pruning
   groupId?: string | null;
   takeNumber?: number;
+  batchItems?: {
+    id: string;
+    originalName: string;
+    filename: string;
+    audioUrl: string;
+    voiceId: string;
+    voiceName: string;
+    processingTimeMs: number;
+    sizeBytes: number;
+  }[];
 };
 
 const DB_NAME = 'ElevenLabsTTSWorkbenchDB';
