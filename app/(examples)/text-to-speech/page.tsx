@@ -4983,15 +4983,33 @@ return (
                   )}
 
                   <div className="pt-3.5 border-t border-zinc-900 flex flex-col sm:flex-row justify-between items-center gap-3.5 mt-2">
-                    <div className="flex items-center gap-2.5">
-                      <Switch 
-                        id="noise-switch"
-                        checked={removeBackgroundNoise} 
-                        onCheckedChange={setRemoveBackgroundNoise}
-                      />
-                      <Label htmlFor="noise-switch" className="text-xs text-zinc-400 cursor-pointer select-none font-medium">
-                        Remove background noise from input audio
-                      </Label>
+                    <div className="flex flex-wrap items-center gap-4">
+                      <div className="flex items-center gap-2">
+                        <Label className="text-xs font-semibold text-zinc-300">Model:</Label>
+                        <Select value={selectedModelId} onValueChange={setSelectedModelId}>
+                          <SelectTrigger className="bg-zinc-900 border-zinc-800 text-xs h-8 px-2.5 min-w-[200px]">
+                            <SelectValue placeholder="Select STS Model" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-zinc-900 border-zinc-800 text-zinc-200">
+                            {filteredModels.map(m => (
+                              <SelectItem key={m.model_id} value={m.model_id} className="text-xs">
+                                {m.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="flex items-center gap-2.5">
+                        <Switch 
+                          id="noise-switch"
+                          checked={removeBackgroundNoise} 
+                          onCheckedChange={setRemoveBackgroundNoise}
+                        />
+                        <Label htmlFor="noise-switch" className="text-xs text-zinc-400 cursor-pointer select-none font-medium">
+                          Remove background noise
+                        </Label>
+                      </div>
                     </div>
 
                     {stsMode === 'single' ? (
