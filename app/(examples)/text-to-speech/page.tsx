@@ -16,6 +16,7 @@ import {
   Unlock, 
   FileAudio, 
   FolderOpen, 
+  Upload, 
   Settings, 
   Layers, 
   MessageSquare,
@@ -81,6 +82,15 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { getSubscriptionInfo } from '@/app/actions/manage-api-key';
 import JSZip from 'jszip';
+
+function formatBytes(bytes: number, decimals = 1) {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+}
 
 type HistoryItem = {
   id: string;
@@ -190,6 +200,10 @@ export default function TextToSpeechPage() {
   // Voice-to-Voice (Speech-to-Speech) State
   const [stsSourceAudioBase64, setStsSourceAudioBase64] = useState<string | null>(null);
   const [stsSourceAudioUrl, setStsSourceAudioUrl] = useState<string | null>(null);
+  const [stsFileName, setStsFileName] = useState<string | null>(null);
+  const [stsFileSizeFormatted, setStsFileSizeFormatted] = useState<string | null>(null);
+  const [stsFileType, setStsFileType] = useState<string | null>(null);
+  const [isDraggingStsFile, setIsDraggingStsFile] = useState<boolean>(false);
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const [recordingTime, setRecordingTime] = useState<number>(0);
   const [removeBackgroundNoise, setRemoveBackgroundNoise] = useState<boolean>(true);
@@ -1433,8 +1447,16 @@ export default function TextToSpeechPage() {
 
       mediaRecorder.onstop = async () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
+        
+        if (stsSourceAudioUrl && stsSourceAudioUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(stsSourceAudioUrl);
+        }
+        
         const url = URL.createObjectURL(audioBlob);
         setStsSourceAudioUrl(url);
+        setStsFileName('Microphone Recording');
+        setStsFileType('MIC');
+        setStsFileSizeFormatted(formatBytes(audioBlob.size));
 
         const reader = new FileReader();
         reader.readAsDataURL(audioBlob);
@@ -1472,17 +1494,33 @@ export default function TextToSpeechPage() {
     }
   };
 
-  const handleStsFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const processStsAudioFile = (file: File) => {
     if (!file) return;
 
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error('Audio file is too large. Maximum size is 10MB.');
+    const isAudioType = file.type.startsWith('audio/') || 
+      /\.(mp3|wav|m4a|aac|ogg|flac|webm|opus)$/i.test(file.name);
+
+    if (!isAudioType) {
+      toast.error(`"${file.name}" is not a supported audio file. Please upload MP3, WAV, M4A, AAC, OGG, FLAC, or WEBM.`);
       return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error(`Audio file "${file.name}" exceeds 10MB limit (${formatBytes(file.size)}).`);
+      return;
+    }
+
+    if (stsSourceAudioUrl && stsSourceAudioUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(stsSourceAudioUrl);
     }
 
     const url = URL.createObjectURL(file);
     setStsSourceAudioUrl(url);
+
+    setStsFileName(file.name);
+    setStsFileSizeFormatted(formatBytes(file.size));
+    const extMatch = file.name.match(/\.([0-9a-z]+)$/i);
+    setStsFileType(extMatch ? extMatch[1].toUpperCase() : 'AUDIO');
 
     const reader = new FileReader();
     reader.readAsDataURL(file);
@@ -1492,6 +1530,46 @@ export default function TextToSpeechPage() {
       setStsSourceAudioBase64(base64Raw);
       toast.success(`Audio file "${file.name}" loaded successfully.`);
     };
+  };
+
+  const handleStsFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) processStsAudioFile(file);
+  };
+
+  const handleStsDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isDraggingStsFile) setIsDraggingStsFile(true);
+  };
+
+  const handleStsDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setIsDraggingStsFile(false);
+    }
+  };
+
+  const handleStsDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingStsFile(false);
+
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      processStsAudioFile(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handleClearStsSource = () => {
+    if (stsSourceAudioUrl && stsSourceAudioUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(stsSourceAudioUrl);
+    }
+    setStsSourceAudioUrl(null);
+    setStsSourceAudioBase64(null);
+    setStsFileName(null);
+    setStsFileSizeFormatted(null);
+    setStsFileType(null);
   };
 
   const handleGenerateSTS = async () => {
@@ -4106,43 +4184,72 @@ return (
                       )}
                     </div>
 
-                    {/* Upload section */}
-                    <div className="border border-zinc-850 rounded-lg p-5 bg-zinc-900/30 flex flex-col items-center justify-center text-center space-y-3.5 min-h-[150px] relative">
-                      <span className="text-sm font-semibold text-zinc-300">Option 2: Upload Audio File</span>
-                      <p className="text-xs text-zinc-500">Supports WAV, MP3, M4A up to 10MB</p>
-                      
-                      <div className="relative">
-                        <input 
-                          type="file" 
-                          id="sts-file-upload" 
-                          accept="audio/*" 
-                          onChange={handleStsFileChange} 
-                          className="hidden" 
-                        />
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          onClick={() => document.getElementById('sts-file-upload')?.click()}
-                          className="bg-zinc-900 border-zinc-850 text-xs h-10 px-4 font-bold"
-                        >
-                          <FolderOpen className="h-3.5 w-3.5 mr-1.5" /> Choose File
-                        </Button>
-                      </div>
+                    {/* Upload section with Drag & Drop */}
+                    <div 
+                      onDragOver={handleStsDragOver}
+                      onDragLeave={handleStsDragLeave}
+                      onDrop={handleStsDrop}
+                      onClick={() => document.getElementById('sts-file-upload')?.click()}
+                      className={`border rounded-lg p-5 flex flex-col items-center justify-center text-center space-y-3.5 min-h-[150px] relative cursor-pointer transition-all duration-200 ${
+                        isDraggingStsFile 
+                          ? 'border-purple-500 bg-purple-500/15 scale-[1.02] shadow-xl shadow-purple-500/20 ring-2 ring-purple-500/40' 
+                          : 'border-zinc-850 bg-zinc-900/30 hover:border-purple-600/50 hover:bg-purple-950/20 group'
+                      }`}
+                    >
+                      <input 
+                        type="file" 
+                        id="sts-file-upload" 
+                        accept="audio/*" 
+                        onChange={handleStsFileChange} 
+                        className="hidden" 
+                      />
+
+                      {isDraggingStsFile ? (
+                        <div className="flex flex-col items-center space-y-2 pointer-events-none">
+                          <Upload className="h-8 w-8 text-purple-400 animate-bounce" />
+                          <span className="text-sm font-bold text-purple-300">Drop Audio File Here</span>
+                          <span className="text-xs text-purple-400/80">WAV, MP3, M4A, AAC, OGG up to 10MB</span>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="p-2.5 rounded-full bg-zinc-800/80 group-hover:bg-purple-900/40 group-hover:text-purple-400 text-zinc-400 transition-colors">
+                            <Upload className="h-5 w-5" />
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-sm font-semibold text-zinc-200 group-hover:text-purple-300 transition-colors block">
+                              Option 2: Drag & Drop or Click to Upload
+                            </span>
+                            <p className="text-xs text-zinc-500">Supports WAV, MP3, M4A up to 10MB</p>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
 
                   {stsSourceAudioUrl && (
-                    <div className="border border-zinc-850 rounded-lg p-3 bg-zinc-900/10 space-y-2">
-                      <div className="flex justify-between items-center text-xs text-zinc-400">
-                        <span className="font-semibold flex items-center gap-1.5"><Volume2 className="h-3.5 w-3.5 text-purple-400" /> Source Audio Preview</span>
+                    <div className="border border-purple-900/30 rounded-lg p-3.5 bg-purple-950/10 space-y-2.5">
+                      <div className="flex justify-between items-center text-xs">
+                        <div className="flex items-center gap-2 overflow-hidden">
+                          <Volume2 className="h-4 w-4 text-purple-400 shrink-0" />
+                          <span className="font-semibold text-zinc-200 truncate">
+                            {stsFileName || 'Source Audio Preview'}
+                          </span>
+                          {stsFileType && (
+                            <span className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-purple-900/50 text-purple-300 rounded border border-purple-700/40 uppercase shrink-0">
+                              {stsFileType}
+                            </span>
+                          )}
+                          {stsFileSizeFormatted && (
+                            <span className="text-[10px] text-zinc-500 shrink-0 font-mono">
+                              ({stsFileSizeFormatted})
+                            </span>
+                          )}
+                        </div>
                         <Button 
                           variant="link" 
                           size="sm" 
-                          onClick={() => {
-                            setStsSourceAudioUrl(null);
-                            setStsSourceAudioBase64(null);
-                          }}
-                          className="h-auto p-0 text-red-400 hover:text-red-300 text-xs"
+                          onClick={handleClearStsSource}
+                          className="h-auto p-0 text-red-400 hover:text-red-300 text-xs font-semibold shrink-0"
                         >
                           Clear
                         </Button>
