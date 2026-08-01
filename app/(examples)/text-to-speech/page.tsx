@@ -300,10 +300,19 @@ export default function TextToSpeechPage() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [isProcessingBatch]);
   
+const DEFAULT_FALLBACK_MODELS: ElevenLabsModel[] = [
+  { model_id: 'eleven_v3', name: 'Eleven v3 🔥', can_do_text_to_speech: true } as ElevenLabsModel,
+  { model_id: 'eleven_multilingual_v2', name: 'Eleven Multilingual v2', can_do_text_to_speech: true } as ElevenLabsModel,
+  { model_id: 'eleven_turbo_v2_5', name: 'Eleven Turbo v2.5', can_do_text_to_speech: true } as ElevenLabsModel,
+  { model_id: 'eleven_multilingual_sts_v2', name: 'Eleven Multilingual STS v2', can_do_text_to_speech: true, can_do_voice_conversion: true } as ElevenLabsModel,
+  { model_id: 'eleven_english_sts_v2', name: 'Eleven English STS v2', can_do_text_to_speech: true, can_do_voice_conversion: true } as ElevenLabsModel
+];
+
+export default function TextToSpeechPage() {
   // Core Data
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [voices, setVoices] = useState<any[]>([]);
-  const [models, setModels] = useState<ElevenLabsModel[]>([]);
+  const [models, setModels] = useState<ElevenLabsModel[]>(DEFAULT_FALLBACK_MODELS);
   const [selectedVoiceId, setSelectedVoiceId] = useState<string>('');
   const [selectedModelId, setSelectedModelId] = useState<string>('eleven_v3');
   const [storagePath, setStoragePath] = useState<string>('Loading...');
@@ -2988,17 +2997,27 @@ export default function TextToSpeechPage() {
 
   const displayedVoices = filteredVoices.slice(0, voiceListLimit);
 
-  const filteredModels = models.filter(m => {
-    if (activeTab === 'voice2voice') {
-      return (
-        m.can_do_voice_conversion ||
-        (typeof m.model_id === 'string' && (m.model_id.includes('sts') || m.model_id.includes('speech_to_speech'))) ||
-        m.model_id === 'eleven_multilingual_sts_v2' ||
-        m.model_id === 'eleven_english_sts_v2'
-      );
+  const filteredModels = (() => {
+    const list = models.filter(m => {
+      if (activeTab === 'voice2voice') {
+        return (
+          m.can_do_voice_conversion ||
+          (typeof m.model_id === 'string' && (m.model_id.includes('sts') || m.model_id.includes('speech_to_speech'))) ||
+          m.model_id === 'eleven_multilingual_sts_v2' ||
+          m.model_id === 'eleven_english_sts_v2'
+        );
+      }
+      return m.can_do_text_to_speech !== false;
+    });
+
+    if (list.length === 0) {
+      if (activeTab === 'voice2voice') {
+        return DEFAULT_FALLBACK_MODELS.filter(m => m.model_id.includes('sts'));
+      }
+      return DEFAULT_FALLBACK_MODELS.filter(m => m.can_do_text_to_speech);
     }
-    return m.can_do_text_to_speech !== false;
-  });
+    return list;
+  })();
 
   // Get a performance-optimized list of voices for a specific dialogue line to prevent dropdown lags
   const getDialogueLineVoices = (currentVoiceId: string) => {
