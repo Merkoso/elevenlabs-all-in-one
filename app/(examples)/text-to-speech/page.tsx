@@ -221,7 +221,7 @@ export default function TextToSpeechPage() {
   const [isDraggingStsFile, setIsDraggingStsFile] = useState<boolean>(false);
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const [recordingTime, setRecordingTime] = useState<number>(0);
-  const [removeBackgroundNoise, setRemoveBackgroundNoise] = useState<boolean>(true);
+  const [removeBackgroundNoise, setRemoveBackgroundNoise] = useState<boolean>(false);
   const [isConvertingSTS, setIsConvertingSTS] = useState<boolean>(false);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
