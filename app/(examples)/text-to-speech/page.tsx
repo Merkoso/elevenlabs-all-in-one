@@ -41,7 +41,8 @@ import {
   Square,
   RotateCw,
   SkipForward,
-  FolderArchive
+  FolderArchive,
+  CircleCheckBig
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -270,6 +271,7 @@ export default function TextToSpeechPage() {
     result?: StsWorkbenchResponse & { voiceName: string };
     overrideVoiceId?: string;
     selectedForZip?: boolean;
+    approved?: boolean;
   };
 
   const [stsBatchItems, setStsBatchItems] = useState<StsBatchItem[]>([]);
@@ -1762,6 +1764,16 @@ export default function TextToSpeechPage() {
     setStsBatchItems(prev => prev.map(it => (it.id === id ? { ...it, selectedForZip: !it.selectedForZip } : it)));
   };
 
+  const handleToggleApproved = (id: string) => {
+    setStsBatchItems(prev => prev.map(it => (it.id === id ? { ...it, approved: !it.approved } : it)));
+  };
+
+  const getV2vDownloadName = (originalFileName: string) => {
+    const lastDot = originalFileName.lastIndexOf('.');
+    if (lastDot === -1) return `${originalFileName}_v2v`;
+    return `${originalFileName.substring(0, lastDot)}_v2v${originalFileName.substring(lastDot)}`;
+  };
+
   const handleSkipCurrentBatchItem = () => {
     isSkippingItemRef.current = true;
     toast.info('Skipping current file...');
@@ -1940,13 +1952,14 @@ export default function TextToSpeechPage() {
     const folder = zip.folder('v2v_converted_audio');
 
     for (const item of targets) {
+      const zipFileName = getV2vDownloadName(item.fileName);
       if (item.result?.audioBase64) {
-        folder?.file(item.result.filename || `converted_${item.fileName}`, item.result.audioBase64, { base64: true });
+        folder?.file(zipFileName, item.result.audioBase64, { base64: true });
       } else if (item.result?.audioUrl) {
         try {
           const resp = await fetch(item.result.audioUrl);
           const blob = await resp.blob();
-          folder?.file(item.result.filename || `converted_${item.fileName}`, blob);
+          folder?.file(zipFileName, blob);
         } catch (e) {
           console.error('Failed to fetch file for ZIP:', e);
         }
@@ -4884,8 +4897,12 @@ return (
                                       </span>
                                     )}
                                     {item.status === 'success' && (
-                                      <span className="px-2 py-0.5 text-[10px] bg-green-950/60 text-green-300 border border-green-800/40 rounded font-semibold">
-                                        Done ({item.result?.voiceName})
+                                      <span className={`px-2 py-0.5 text-[10px] rounded font-semibold ${
+                                        item.approved
+                                          ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-600/50'
+                                          : 'bg-green-950/60 text-green-300 border border-green-800/40'
+                                      }`}>
+                                        {item.approved ? '✓ Approved' : 'Done'} ({item.result?.voiceName})
                                       </span>
                                     )}
                                     {item.status === 'error' && (
@@ -4924,24 +4941,40 @@ return (
                                       </DropdownMenuContent>
                                     </DropdownMenu>
 
-                                    {/* Regenerate Button */}
+                                    {/* Approve / Regenerate Buttons */}
                                     {item.status === 'success' && (
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        disabled={regeneratingItemId === item.id || isProcessingBatch}
-                                        onClick={() => handleRegenerateBatchItem(item.id)}
-                                        className="h-6 px-2 text-[10px] bg-zinc-900 border-zinc-750 text-zinc-300 hover:text-purple-300"
-                                        title="Regenerate single file"
-                                      >
-                                        {regeneratingItemId === item.id ? (
-                                          <Loader2 className="h-3 w-3 animate-spin" />
-                                        ) : (
-                                          <>
-                                            <RotateCw className="h-3 w-3 mr-1" /> Regen
-                                          </>
-                                        )}
-                                      </Button>
+                                      <>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => handleToggleApproved(item.id)}
+                                          className={`h-6 px-2 text-[10px] border transition-all ${
+                                            item.approved
+                                              ? 'bg-emerald-950/60 border-emerald-700/50 text-emerald-300 hover:bg-emerald-950/80'
+                                              : 'bg-zinc-900 border-zinc-750 text-zinc-400 hover:text-emerald-300'
+                                          }`}
+                                          title={item.approved ? 'Unmark as approved' : 'Mark as good take'}
+                                        >
+                                          <CircleCheckBig className={`h-3 w-3 mr-1 ${item.approved ? 'text-emerald-400' : ''}`} />
+                                          {item.approved ? 'Approved' : 'Approve'}
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          disabled={regeneratingItemId === item.id || isProcessingBatch}
+                                          onClick={() => handleRegenerateBatchItem(item.id)}
+                                          className="h-6 px-2 text-[10px] bg-zinc-900 border-zinc-750 text-zinc-300 hover:text-purple-300"
+                                          title="Regenerate single file"
+                                        >
+                                          {regeneratingItemId === item.id ? (
+                                            <Loader2 className="h-3 w-3 animate-spin" />
+                                          ) : (
+                                            <>
+                                              <RotateCw className="h-3 w-3 mr-1" /> Regen
+                                            </>
+                                          )}
+                                        </Button>
+                                      </>
                                     )}
 
                                     {/* Remove button */}
@@ -4983,7 +5016,7 @@ return (
                                         <span>Result: {item.result.voiceName}</span>
                                         <a
                                           href={item.result.audioUrl}
-                                          download={item.result.filename}
+                                          download={getV2vDownloadName(item.fileName)}
                                           className="text-purple-400 hover:underline flex items-center gap-0.5"
                                         >
                                           <Download className="h-2.5 w-2.5" /> Save
