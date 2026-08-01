@@ -929,15 +929,9 @@ export default function TextToSpeechPage() {
             lowerErr.includes('invalid')
           ) {
             setIsApiKeyMissing(true);
-            const fallbackModels: ElevenLabsModel[] = [
-              { model_id: 'eleven_v3', name: 'Eleven v3 🔥', can_do_text_to_speech: true } as ElevenLabsModel,
-              { model_id: 'eleven_multilingual_v2', name: 'Eleven Multilingual v2', can_do_text_to_speech: true } as ElevenLabsModel,
-              { model_id: 'eleven_turbo_v2_5', name: 'Eleven Turbo v2.5', can_do_text_to_speech: true } as ElevenLabsModel,
-              { model_id: 'eleven_multilingual_sts_v2', name: 'Eleven Multilingual STS v2', can_do_text_to_speech: true } as ElevenLabsModel
-            ];
-            setModels(fallbackModels);
+            setModels(DEFAULT_FALLBACK_MODELS);
             setSelectedModelId(prev => {
-              const stillExists = prev && fallbackModels.some(m => m.model_id === prev);
+              const stillExists = prev && DEFAULT_FALLBACK_MODELS.some(m => m.model_id === prev);
               return stillExists ? prev : 'eleven_v3';
             });
           } else {
