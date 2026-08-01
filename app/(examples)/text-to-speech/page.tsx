@@ -1226,7 +1226,7 @@ export default function TextToSpeechPage() {
       setSelectedVoiceId(item.voiceId);
       setText(item.text);
       setActiveTab('expressive');
-      toast.success('TTS settings and script replicated from history!');
+      toast.success(`TTS text, seed (${item.seed ?? 'N/A'}), and settings replicated!`);
     }
   };
 
@@ -2036,12 +2036,14 @@ export default function TextToSpeechPage() {
     if (res.ok) {
       const data = res.value;
       const vName = voices.find(v => v.voiceId === selectedVoiceId)?.name || 'Unknown';
-      const { url } = base64ToBlob(data.audioBase64, data.filename);
+      const finalFilename = stsFileName ? getV2vDownloadName(stsFileName) : data.filename;
+      const { url } = base64ToBlob(data.audioBase64, finalFilename);
 
-      const combinedText = `[Voice-to-Voice conversion to ${vName}]`;
+      const combinedText = `[Voice-to-Voice conversion: ${stsFileName || 'audio'} to ${vName}]`;
 
       setCurrentResult({
         ...data,
+        filename: finalFilename,
         seed: null,
         voiceName: vName,
         text: combinedText,
@@ -2065,7 +2067,7 @@ export default function TextToSpeechPage() {
         applyTextNormalization: 'auto',
         requestId: data.requestId,
         characterCost: data.characterCost,
-        filename: data.filename,
+        filename: finalFilename,
         processingTimeMs: data.processingTimeMs,
         sizeBytes: data.sizeBytes
       }, data.audioBase64);
@@ -5278,10 +5280,29 @@ return (
                       <div className="text-[9px] uppercase tracking-wider text-zinc-500 font-bold">
                         {currentResult.type === 'sts' ? 'Stability / Similarity' : 'Seed Used'}
                       </div>
-                      <div className="text-xs font-mono font-semibold text-zinc-300 mt-0.5">
+                      <div className="text-xs font-mono font-semibold text-zinc-300 mt-0.5 flex items-center justify-center gap-1">
                         {currentResult.type === 'sts'
                           ? `${Math.round(stability * 100)}% / ${Math.round(similarityBoost * 100)}%`
-                          : currentResult.seed}
+                          : (
+                            <>
+                              <span>{currentResult.seed ?? 'N/A'}</span>
+                              {currentResult.seed !== null && currentResult.seed !== undefined && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-4 w-4 text-zinc-500 hover:text-purple-300 p-0 ml-0.5"
+                                  title="Lock & use this seed for next generations"
+                                  onClick={() => {
+                                    setSeed(currentResult.seed.toString());
+                                    setIsSeedLocked(true);
+                                    toast.success(`Seed ${currentResult.seed} locked!`);
+                                  }}
+                                >
+                                  <Lock className="h-2.5 w-2.5" />
+                                </Button>
+                              )}
+                            </>
+                          )}
                       </div>
                     </div>
                   </div>
@@ -5640,8 +5661,23 @@ return (
                             <div>
                               Voice: <span className="text-zinc-300 font-medium">{item.voiceName}</span>
                             </div>
-                            <div>
+                            <div className="flex items-center gap-1">
                               Seed: <span className="text-zinc-300 font-mono font-medium">{item.seed ?? 'N/A'}</span>
+                              {item.seed !== null && item.seed !== undefined && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-4 w-4 text-zinc-500 hover:text-purple-300 p-0"
+                                  title="Lock & use this seed"
+                                  onClick={() => {
+                                    setSeed(item.seed.toString());
+                                    setIsSeedLocked(true);
+                                    toast.success(`Seed ${item.seed} loaded & locked!`);
+                                  }}
+                                >
+                                  <Lock className="h-2.5 w-2.5" />
+                                </Button>
+                              )}
                             </div>
                             <div>
                               Size: <span className="text-zinc-300 font-medium">{(item.sizeBytes / 1024).toFixed(1)} KB</span>
