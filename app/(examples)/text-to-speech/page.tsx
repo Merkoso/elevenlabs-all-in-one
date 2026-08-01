@@ -216,6 +216,21 @@ export default function TextToSpeechPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recordingTimerRef = useRef<any>(null);
   
+  const stsSourceAudioRef = useRef<HTMLAudioElement | null>(null);
+  const stsResultAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  const handleSourceAudioPlay = () => {
+    if (stsResultAudioRef.current && !stsResultAudioRef.current.paused) {
+      stsResultAudioRef.current.pause();
+    }
+  };
+
+  const handleResultAudioPlay = () => {
+    if (stsSourceAudioRef.current && !stsSourceAudioRef.current.paused) {
+      stsSourceAudioRef.current.pause();
+    }
+  };
+  
   // Core Data
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [voices, setVoices] = useState<any[]>([]);
@@ -4300,46 +4315,136 @@ return (
 
             {/* Current result feedback */}
             {currentResult && (
-              <Card className="border-purple-900/40 bg-zinc-950/80 shadow-md">
+              <Card className="border-purple-900/40 bg-zinc-950/80 shadow-md overflow-hidden">
                 <CardHeader className="py-3 flex flex-row items-center justify-between border-b border-zinc-900">
                   <div className="flex items-center gap-2">
                     <FileAudio className="h-4 w-4 text-purple-400" />
-                    <CardTitle className="text-xs font-bold text-zinc-200">Active Render Output</CardTitle>
+                    <CardTitle className="text-xs font-bold text-zinc-200">
+                      {currentResult.type === 'sts' ? 'Voice-to-Voice A/B Comparison' : 'Active Render Output'}
+                    </CardTitle>
                   </div>
-                  <div className="text-[10px] font-mono text-zinc-500 bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800">
-                    ID: {currentResult.id}
+                  <div className="flex items-center gap-2">
+                    {currentResult.type === 'sts' && (
+                      <span className="text-[10px] font-medium bg-purple-950/60 text-purple-300 px-2 py-0.5 rounded border border-purple-800/40">
+                        {models.find(m => m.model_id === currentResult.modelId)?.name || currentResult.modelId}
+                      </span>
+                    )}
+                    <div className="text-[10px] font-mono text-zinc-500 bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800">
+                      ID: {currentResult.id}
+                    </div>
                   </div>
                 </CardHeader>
-                <CardContent className="py-4 space-y-3.5">
-                  <div className="text-xs bg-zinc-900/40 border border-zinc-900 rounded p-2.5 leading-relaxed text-zinc-400 relative group">
-                    <div className="flex justify-between items-center mb-1.5">
-                      <span className="font-bold text-zinc-300 text-[10px] uppercase tracking-wider">Generated Text</span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleCopyText(currentResult.id, currentResult.text)}
-                        className="h-6 w-6 text-zinc-500 hover:text-white hover:bg-zinc-800 transition-all opacity-0 group-hover:opacity-100 focus:opacity-100"
-                        title="Copy text to clipboard"
-                      >
-                        {copiedId === currentResult.id ? <Check className="h-3 w-3 text-green-400" /> : <Copy className="h-3 w-3" />}
-                      </Button>
-                    </div>
-                    <div className="pr-4 whitespace-pre-wrap">{currentResult.text}</div>
-                  </div>
 
-                  {/* Audio Controls */}
-                  <div className="flex flex-col sm:flex-row items-center gap-3 bg-zinc-900/60 border border-zinc-800 rounded-lg p-3">
-                    <audio src={currentResult.audioUrl} controls className="w-full h-8" />
-                    <Button 
-                      size="sm" 
-                      variant="outline" 
-                      onClick={() => triggerBrowserDownload(currentResult.filename, currentResult.audioUrl)}
-                      className="bg-zinc-950 border-zinc-800 hover:bg-zinc-800 text-xs font-semibold shrink-0 h-8 gap-1"
-                    >
-                      <Download className="h-3.5 w-3.5" />
-                      Save File
-                    </Button>
-                  </div>
+                <CardContent className="py-4 space-y-4">
+                  {currentResult.type === 'sts' ? (
+                    /* Voice-to-Voice A/B Comparison View */
+                    <div className="space-y-3">
+                      {/* Original Audio Track */}
+                      {stsSourceAudioUrl ? (
+                        <div className="bg-zinc-900/40 border border-zinc-850 rounded-lg p-3 space-y-2">
+                          <div className="flex justify-between items-center text-xs">
+                            <div className="flex items-center gap-2">
+                              <span className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 font-bold text-[10px] uppercase tracking-wider">
+                                Before (Source Audio)
+                              </span>
+                              {stsFileName && (
+                                <span className="text-zinc-400 font-mono text-[11px] truncate max-w-[200px]">
+                                  {stsFileName}
+                                </span>
+                              )}
+                              {stsFileSizeFormatted && (
+                                <span className="text-zinc-500 text-[10px] font-mono">({stsFileSizeFormatted})</span>
+                              )}
+                            </div>
+                          </div>
+                          <audio
+                            ref={stsSourceAudioRef}
+                            src={stsSourceAudioUrl}
+                            onPlay={handleSourceAudioPlay}
+                            controls
+                            className="w-full h-8 bg-zinc-950 rounded"
+                          />
+                        </div>
+                      ) : (
+                        <div className="text-xs text-zinc-500 italic p-2 bg-zinc-900/20 border border-zinc-900 rounded">
+                          (Original source audio expired or cleared)
+                        </div>
+                      )}
+
+                      {/* Visual Transformation Indicator */}
+                      <div className="flex items-center justify-center gap-2 my-1">
+                        <div className="h-[1px] bg-purple-900/40 flex-1" />
+                        <div className="flex items-center gap-1.5 bg-purple-950/40 border border-purple-800/40 text-purple-300 px-2.5 py-1 rounded-full text-[10px] font-semibold">
+                          <Sparkles className="h-3 w-3 text-purple-400 animate-pulse" />
+                          <span>Converted to: <strong className="text-white">{currentResult.voiceName}</strong></span>
+                        </div>
+                        <div className="h-[1px] bg-purple-900/40 flex-1" />
+                      </div>
+
+                      {/* Converted Result Audio Track */}
+                      <div className="bg-purple-950/20 border border-purple-900/40 rounded-lg p-3 space-y-2">
+                        <div className="flex justify-between items-center text-xs">
+                          <div className="flex items-center gap-2">
+                            <span className="px-2 py-0.5 rounded bg-purple-900/60 text-purple-200 font-bold text-[10px] uppercase tracking-wider border border-purple-700/50">
+                              After (Transformed Voice)
+                            </span>
+                            <span className="text-purple-300 font-medium text-[11px]">
+                              {currentResult.voiceName}
+                            </span>
+                          </div>
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            onClick={() => triggerBrowserDownload(currentResult.filename, currentResult.audioUrl)}
+                            className="bg-zinc-900 border-zinc-750 hover:bg-purple-900/40 text-purple-300 text-xs font-semibold h-7 px-2.5 gap-1"
+                          >
+                            <Download className="h-3 w-3" />
+                            Save Result
+                          </Button>
+                        </div>
+                        <audio
+                          ref={stsResultAudioRef}
+                          src={currentResult.audioUrl}
+                          onPlay={handleResultAudioPlay}
+                          controls
+                          className="w-full h-8 bg-zinc-950 rounded"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    /* Standard TTS View */
+                    <>
+                      <div className="text-xs bg-zinc-900/40 border border-zinc-900 rounded p-2.5 leading-relaxed text-zinc-400 relative group">
+                        <div className="flex justify-between items-center mb-1.5">
+                          <span className="font-bold text-zinc-300 text-[10px] uppercase tracking-wider">Generated Text</span>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleCopyText(currentResult.id, currentResult.text)}
+                            className="h-6 w-6 text-zinc-500 hover:text-white hover:bg-zinc-800 transition-all opacity-0 group-hover:opacity-100 focus:opacity-100"
+                            title="Copy text to clipboard"
+                          >
+                            {copiedId === currentResult.id ? <Check className="h-3 w-3 text-green-400" /> : <Copy className="h-3 w-3" />}
+                          </Button>
+                        </div>
+                        <div className="pr-4 whitespace-pre-wrap">{currentResult.text}</div>
+                      </div>
+
+                      {/* Audio Controls */}
+                      <div className="flex flex-col sm:flex-row items-center gap-3 bg-zinc-900/60 border border-zinc-800 rounded-lg p-3">
+                        <audio src={currentResult.audioUrl} controls className="w-full h-8" />
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          onClick={() => triggerBrowserDownload(currentResult.filename, currentResult.audioUrl)}
+                          className="bg-zinc-950 border-zinc-800 hover:bg-zinc-800 text-xs font-semibold shrink-0 h-8 gap-1"
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                          Save File
+                        </Button>
+                      </div>
+                    </>
+                  )}
 
                   {/* Metadata Stats */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
@@ -4348,9 +4453,13 @@ return (
                       <div className="text-xs font-semibold text-zinc-300 mt-0.5">{currentResult.processingTimeMs}ms</div>
                     </div>
                     <div className="bg-zinc-900/40 border border-zinc-900 rounded p-2 text-center">
-                      <div className="text-[9px] uppercase tracking-wider text-zinc-500 font-bold">Characters Cost</div>
+                      <div className="text-[9px] uppercase tracking-wider text-zinc-500 font-bold">
+                        {currentResult.type === 'sts' ? 'Noise Removal' : 'Characters Cost'}
+                      </div>
                       <div className="text-xs font-semibold text-zinc-300 mt-0.5">
-                        {currentResult.characterCost !== null ? `${currentResult.characterCost} chars` : 'N/A'}
+                        {currentResult.type === 'sts' 
+                          ? (removeBackgroundNoise ? 'Enabled' : 'Disabled')
+                          : (currentResult.characterCost !== null ? `${currentResult.characterCost} chars` : 'N/A')}
                       </div>
                     </div>
                     <div className="bg-zinc-900/40 border border-zinc-900 rounded p-2 text-center">
@@ -4360,8 +4469,14 @@ return (
                       </div>
                     </div>
                     <div className="bg-zinc-900/40 border border-zinc-900 rounded p-2 text-center">
-                      <div className="text-[9px] uppercase tracking-wider text-zinc-500 font-bold">Seed Used</div>
-                      <div className="text-xs font-mono font-semibold text-zinc-300 mt-0.5">{currentResult.seed}</div>
+                      <div className="text-[9px] uppercase tracking-wider text-zinc-500 font-bold">
+                        {currentResult.type === 'sts' ? 'Stability / Similarity' : 'Seed Used'}
+                      </div>
+                      <div className="text-xs font-mono font-semibold text-zinc-300 mt-0.5">
+                        {currentResult.type === 'sts'
+                          ? `${Math.round(stability * 100)}% / ${Math.round(similarityBoost * 100)}%`
+                          : currentResult.seed}
+                      </div>
                     </div>
                   </div>
                 </CardContent>
