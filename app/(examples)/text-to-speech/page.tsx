@@ -279,6 +279,18 @@ export default function TextToSpeechPage() {
   };
 
   useEffect(() => {
+    const handleGlobalDrag = (e: DragEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener('dragover', handleGlobalDrag);
+    window.addEventListener('drop', handleGlobalDrag);
+    return () => {
+      window.removeEventListener('dragover', handleGlobalDrag);
+      window.removeEventListener('drop', handleGlobalDrag);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!isProcessingBatch) return;
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       e.preventDefault();
@@ -1629,7 +1641,18 @@ export default function TextToSpeechPage() {
     setIsDraggingStsFile(false);
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      processStsAudioFile(e.dataTransfer.files[0]);
+      if (e.dataTransfer.files.length > 1) {
+        if (stsMode !== 'batch') {
+          setStsMode('batch');
+        }
+        processBatchAudioFiles(e.dataTransfer.files);
+      } else {
+        if (stsMode === 'batch') {
+          processBatchAudioFiles(e.dataTransfer.files);
+        } else {
+          processStsAudioFile(e.dataTransfer.files[0]);
+        }
+      }
     }
   };
 
@@ -4676,14 +4699,7 @@ return (
                       <div 
                         onDragOver={handleStsDragOver}
                         onDragLeave={handleStsDragLeave}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setIsDraggingStsFile(false);
-                          if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-                            processBatchAudioFiles(e.dataTransfer.files);
-                          }
-                        }}
+                        onDrop={handleStsDrop}
                         onClick={() => document.getElementById('sts-batch-file-upload')?.click()}
                         className={`border rounded-lg p-5 flex flex-col items-center justify-center text-center space-y-2.5 min-h-[130px] relative cursor-pointer transition-all duration-200 ${
                           isDraggingStsFile 
