@@ -8,6 +8,7 @@ export type ElevenLabsModel = {
   name: string;
   description: string;
   can_do_text_to_speech: boolean;
+  can_do_voice_conversion?: boolean;
   can_use_style?: boolean;
   can_use_speaker_boost?: boolean;
   max_characters_per_request?: number;
@@ -31,6 +32,7 @@ export async function getModels(): Promise<Result<ElevenLabsModel[]>> {
       name: m.name ?? m.modelId,
       description: m.description ?? '',
       can_do_text_to_speech: m.canDoTextToSpeech ?? false,
+      can_do_voice_conversion: m.canDoVoiceConversion ?? m.canDoSpeechToSpeech ?? (typeof m.modelId === 'string' && (m.modelId.includes('sts') || m.modelId.includes('speech_to_speech'))) ?? false,
       can_use_style: m.canUseStyle ?? false,
       can_use_speaker_boost: m.canUseSpeakerBoost ?? false,
       max_characters_per_request: m.maxCharactersPerRequest ?? 5000,

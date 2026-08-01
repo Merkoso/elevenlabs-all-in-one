@@ -4575,9 +4575,21 @@ return (
                         </button>
                       </div>
                     </div>
-                    {!zenMode && (
-                      <span className="text-xs text-zinc-500 font-normal">Change input voice to target voice</span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-zinc-400 font-semibold">Model:</span>
+                      <Select value={selectedModelId} onValueChange={setSelectedModelId}>
+                        <SelectTrigger className="bg-zinc-900 border-zinc-800 text-xs h-8 px-2.5 min-w-[200px]">
+                          <SelectValue placeholder="Select Model" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-zinc-900 border-zinc-800 text-zinc-200">
+                          {filteredModels.map(m => (
+                            <SelectItem key={m.model_id} value={m.model_id} className="text-xs">
+                              {m.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </CardTitle>
                   {!zenMode && (
                     <CardDescription className="text-xs text-zinc-500 mt-1 leading-normal">
