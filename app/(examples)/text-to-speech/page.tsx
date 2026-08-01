@@ -899,14 +899,16 @@ export default function TextToSpeechPage() {
       try {
         const mResult = await getModels();
         if (mResult.ok) {
-          const ttsCapableModels = mResult.value.filter(m => m.can_do_text_to_speech);
-          setModels(ttsCapableModels);
+          const validModels = mResult.value.filter(
+            m => m.can_do_text_to_speech || m.can_do_voice_conversion || (typeof m.model_id === 'string' && (m.model_id.includes('sts') || m.model_id.includes('speech_to_speech')))
+          );
+          setModels(validModels);
           // Set default model v3 if available, otherwise fallback
-          const hasV3 = ttsCapableModels.some(m => m.model_id === 'eleven_v3');
+          const hasV3 = validModels.some(m => m.model_id === 'eleven_v3');
           setSelectedModelId(prev => {
-            const stillExists = prev && ttsCapableModels.some(m => m.model_id === prev);
+            const stillExists = prev && validModels.some(m => m.model_id === prev);
             if (stillExists) return prev;
-            return hasV3 ? 'eleven_v3' : (ttsCapableModels[0]?.model_id || 'eleven_v3');
+            return hasV3 ? 'eleven_v3' : (validModels[0]?.model_id || 'eleven_v3');
           });
         } else {
           const errStr = mResult.error || '';
@@ -1030,22 +1032,28 @@ export default function TextToSpeechPage() {
   // Handle auto-model selection when switching tabs (e.g. STS models for Voice-to-Voice)
   useEffect(() => {
     if (activeTab === 'voice2voice') {
-      const hasSts = models.some(m => m.model_id === 'eleven_multilingual_sts_v2');
-      if (hasSts) {
-        setSelectedModelId('eleven_multilingual_sts_v2');
-      } else {
-        const firstSts = models.find(m => m.model_id.includes('sts'));
+      const isCurrentSts = selectedModelId.includes('sts') || selectedModelId.includes('speech_to_speech');
+      if (!isCurrentSts) {
+        const firstSts = models.find(m => m.can_do_voice_conversion || (typeof m.model_id === 'string' && (m.model_id.includes('sts') || m.model_id.includes('speech_to_speech'))));
         if (firstSts) {
           setSelectedModelId(firstSts.model_id);
+        } else {
+          setSelectedModelId('eleven_multilingual_sts_v2');
         }
       }
     } else {
-      const hasV3 = models.some(m => m.model_id === 'eleven_v3');
-      if (hasV3) {
-        setSelectedModelId('eleven_v3');
+      const isCurrentTts = !selectedModelId.includes('sts');
+      if (!isCurrentTts) {
+        const hasV3 = models.some(m => m.model_id === 'eleven_v3');
+        if (hasV3) {
+          setSelectedModelId('eleven_v3');
+        } else {
+          const firstTts = models.find(m => m.can_do_text_to_speech);
+          if (firstTts) setSelectedModelId(firstTts.model_id);
+        }
       }
     }
-  }, [activeTab, models]);
+  }, [activeTab, models, selectedModelId]);
 
   // Global Keyboard Hotkeys Listener
   useEffect(() => {
@@ -2980,12 +2988,16 @@ export default function TextToSpeechPage() {
 
   const displayedVoices = filteredVoices.slice(0, voiceListLimit);
 
-  // Filter models based on Speech-to-Speech support if active tab is voice2voice
   const filteredModels = models.filter(m => {
     if (activeTab === 'voice2voice') {
-      return m.model_id.includes('sts') || m.model_id === 'eleven_multilingual_sts_v2' || m.model_id === 'eleven_english_sts_v2';
+      return (
+        m.can_do_voice_conversion ||
+        (typeof m.model_id === 'string' && (m.model_id.includes('sts') || m.model_id.includes('speech_to_speech'))) ||
+        m.model_id === 'eleven_multilingual_sts_v2' ||
+        m.model_id === 'eleven_english_sts_v2'
+      );
     }
-    return true;
+    return m.can_do_text_to_speech !== false;
   });
 
   // Get a performance-optimized list of voices for a specific dialogue line to prevent dropdown lags
