@@ -201,6 +201,14 @@ const OUTPUT_FORMATS = [
   { value: 'opus_48000_128', label: 'Opus 128kbps' }
 ];
 
+const DEFAULT_FALLBACK_MODELS: ElevenLabsModel[] = [
+  { model_id: 'eleven_v3', name: 'Eleven v3 🔥', can_do_text_to_speech: true } as ElevenLabsModel,
+  { model_id: 'eleven_multilingual_v2', name: 'Eleven Multilingual v2', can_do_text_to_speech: true } as ElevenLabsModel,
+  { model_id: 'eleven_turbo_v2_5', name: 'Eleven Turbo v2.5', can_do_text_to_speech: true } as ElevenLabsModel,
+  { model_id: 'eleven_multilingual_sts_v2', name: 'Eleven Multilingual STS v2', can_do_text_to_speech: true, can_do_voice_conversion: true } as ElevenLabsModel,
+  { model_id: 'eleven_english_sts_v2', name: 'Eleven English STS v2', can_do_text_to_speech: true, can_do_voice_conversion: true } as ElevenLabsModel
+];
+
 export default function TextToSpeechPage() {
   const [apiKey, setKey] = useKey();
   
@@ -300,15 +308,6 @@ export default function TextToSpeechPage() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [isProcessingBatch]);
   
-const DEFAULT_FALLBACK_MODELS: ElevenLabsModel[] = [
-  { model_id: 'eleven_v3', name: 'Eleven v3 🔥', can_do_text_to_speech: true } as ElevenLabsModel,
-  { model_id: 'eleven_multilingual_v2', name: 'Eleven Multilingual v2', can_do_text_to_speech: true } as ElevenLabsModel,
-  { model_id: 'eleven_turbo_v2_5', name: 'Eleven Turbo v2.5', can_do_text_to_speech: true } as ElevenLabsModel,
-  { model_id: 'eleven_multilingual_sts_v2', name: 'Eleven Multilingual STS v2', can_do_text_to_speech: true, can_do_voice_conversion: true } as ElevenLabsModel,
-  { model_id: 'eleven_english_sts_v2', name: 'Eleven English STS v2', can_do_text_to_speech: true, can_do_voice_conversion: true } as ElevenLabsModel
-];
-
-export default function TextToSpeechPage() {
   // Core Data
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [voices, setVoices] = useState<any[]>([]);
