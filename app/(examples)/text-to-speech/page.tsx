@@ -599,6 +599,9 @@ export default function TextToSpeechPage() {
   useEffect(() => {
     if (!isLoaded) return;
     safeSetLocalStorage('tts-workbench-active-tab', activeTab);
+    if (activeTab === 'voice2voice') {
+      setCurrentTakesResults([]);
+    }
   }, [activeTab, safeSetLocalStorage, isLoaded]);
 
   useEffect(() => {
@@ -2087,6 +2090,7 @@ export default function TextToSpeechPage() {
 
     setIsConvertingSTS(true);
     setCurrentResult(null);
+    setCurrentTakesResults([]);
 
     const res = await generateSpeechToSpeech({
       audioBase64: stsSourceAudioBase64,
@@ -5301,7 +5305,7 @@ return (
                         />
                       </div>
                     </div>
-                  ) : currentTakesResults.length > 1 ? (
+                  ) : activeTab !== 'voice2voice' && currentTakesResults.length > 1 ? (
                     /* Multi-Take Comparison Panel if >1 takes were generated */
                     <div className="space-y-3.5">
                       <div className="p-3 bg-purple-950/20 border border-purple-900/40 rounded-lg flex flex-wrap justify-between items-center gap-2">
