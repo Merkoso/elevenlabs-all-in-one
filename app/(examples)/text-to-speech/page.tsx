@@ -314,7 +314,27 @@ export default function TextToSpeechPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [voices, setVoices] = useState<any[]>([]);
   const [models, setModels] = useState<ElevenLabsModel[]>(DEFAULT_FALLBACK_MODELS);
-  const [selectedVoiceId, setSelectedVoiceId] = useState<string>('');
+  // Automatic persistence handlers
+  const safeSetLocalStorage = useCallback((key: string, value: string) => {
+    try {
+      localStorage.setItem(key, value);
+    } catch (e: unknown) {
+      const err = e as { name?: string; message?: string };
+      if (err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
+        console.error('Storage quota exceeded!', e);
+        if (typeof window !== 'undefined') {
+          const now = Date.now();
+          const win = window as unknown as { __lastQuotaToastTime?: number };
+          if (!win.__lastQuotaToastTime || now - win.__lastQuotaToastTime > 5000) {
+            win.__lastQuotaToastTime = now;
+            toast.error('Browser storage limit exceeded. Please delete some old audio files to free space.');
+          }
+        }
+      }
+    }
+  }, []);
+
+  // Models State (Per-Tab Isolation)
   const [ttsModelId, setTtsModelId] = useState<string>('eleven_v3');
   const [v2vModelId, setV2vModelId] = useState<string>('eleven_multilingual_sts_v2');
   const [storagePath, setStoragePath] = useState<string>('Loading...');
@@ -331,10 +351,37 @@ export default function TextToSpeechPage() {
     }
   };
 
-  const handleVoiceSelect = (voiceId: string) => {
-    setSelectedVoiceId(voiceId);
-    safeSetLocalStorage('tts-workbench-selected-voice-id', voiceId);
-  };
+  // Voice State (Per-Tab Memory)
+  const [expressiveVoiceId, setExpressiveVoiceId] = useState<string>('');
+  const [chunkingVoiceId, setChunkingVoiceId] = useState<string>('');
+  const [dialogueVoiceId, setDialogueVoiceId] = useState<string>('');
+  const [v2vVoiceId, setV2vVoiceId] = useState<string>('');
+
+  const selectedVoiceId = 
+    activeTab === 'voice2voice' ? v2vVoiceId :
+    activeTab === 'chunking' ? chunkingVoiceId :
+    activeTab === 'dialogue' ? dialogueVoiceId :
+    expressiveVoiceId;
+
+  const handleVoiceSelect = useCallback((voiceId: string) => {
+    if (activeTab === 'voice2voice') {
+      setV2vVoiceId(voiceId);
+      safeSetLocalStorage('tts-workbench-voice-v2v', voiceId);
+    } else if (activeTab === 'chunking') {
+      setChunkingVoiceId(voiceId);
+      safeSetLocalStorage('tts-workbench-voice-chunking', voiceId);
+    } else if (activeTab === 'dialogue') {
+      setDialogueVoiceId(voiceId);
+      safeSetLocalStorage('tts-workbench-voice-dialogue', voiceId);
+    } else {
+      setExpressiveVoiceId(voiceId);
+      safeSetLocalStorage('tts-workbench-voice-expressive', voiceId);
+    }
+  }, [activeTab, safeSetLocalStorage]);
+
+  const setSelectedVoiceId = useCallback((voiceId: string) => {
+    handleVoiceSelect(voiceId);
+  }, [handleVoiceSelect]);
   
   // Generation Params
   const [text, setText] = useState<string>('');
@@ -506,27 +553,7 @@ export default function TextToSpeechPage() {
   useEffect(() => { chunkTextRef.current = chunkText; }, [chunkText]);
   useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
 
-  // Safe storage helper with QuotaExceededError protection
-  const safeSetLocalStorage = useCallback((key: string, value: string) => {
-    try {
-      localStorage.setItem(key, value);
-    } catch (e: unknown) {
-      const err = e as { name?: string; message?: string };
-      if (err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
-        console.error('Storage quota exceeded!', e);
-        if (typeof window !== 'undefined') {
-          const now = Date.now();
-          const win = window as unknown as { __lastQuotaToastTime?: number };
-          if (!win.__lastQuotaToastTime || now - win.__lastQuotaToastTime > 5000) {
-            win.__lastQuotaToastTime = now;
-            toast.error('Browser storage limit exceeded. Please delete some old audio files to free space.');
-          }
-        }
-      } else {
-        console.error('LocalStorage write failed:', e);
-      }
-    }
-  }, []);
+  // Automatic persistence handlers
 
   // Immediate saves
   useEffect(() => {
@@ -663,7 +690,7 @@ export default function TextToSpeechPage() {
     };
     window.addEventListener('storage', handleStorageEvent);
     return () => window.removeEventListener('storage', handleStorageEvent);
-  }, []);
+  }, [setSelectedVoiceId]);
 
   useEffect(() => {
     localStorage.setItem('elevenlabs-global-volume', globalVolume.toString());
@@ -801,8 +828,19 @@ export default function TextToSpeechPage() {
         const savedText = localStorage.getItem('tts-workbench-text');
         if (savedText) setText(savedText);
 
-        const savedVoiceId = localStorage.getItem('tts-workbench-selected-voice-id');
-        if (savedVoiceId) setSelectedVoiceId(savedVoiceId);
+        const legacySavedVoice = localStorage.getItem('tts-workbench-selected-voice-id');
+
+        const savedExpressiveVoice = localStorage.getItem('tts-workbench-voice-expressive') || legacySavedVoice;
+        if (savedExpressiveVoice) setExpressiveVoiceId(savedExpressiveVoice);
+
+        const savedChunkingVoice = localStorage.getItem('tts-workbench-voice-chunking') || legacySavedVoice;
+        if (savedChunkingVoice) setChunkingVoiceId(savedChunkingVoice);
+
+        const savedDialogueVoice = localStorage.getItem('tts-workbench-voice-dialogue') || legacySavedVoice;
+        if (savedDialogueVoice) setDialogueVoiceId(savedDialogueVoice);
+
+        const savedV2vVoice = localStorage.getItem('tts-workbench-voice-v2v') || legacySavedVoice;
+        if (savedV2vVoice) setV2vVoiceId(savedV2vVoice);
 
         const savedTtsModel = localStorage.getItem('tts-workbench-tts-model-id');
         if (savedTtsModel) setTtsModelId(savedTtsModel);
@@ -879,10 +917,14 @@ export default function TextToSpeechPage() {
 
           setVoices(merged);
           if (merged.length > 0) {
-            setSelectedVoiceId(prev => {
-              const stillExists = prev && merged.some(v => v.voiceId === prev);
-              return stillExists ? prev : merged[0].voiceId;
-            });
+            const ensureValidVoice = (currentId: string, availableVoices: { voiceId: string }[]) => {
+              if (currentId && availableVoices.some(v => v.voiceId === currentId)) return currentId;
+              return availableVoices[0]?.voiceId || '';
+            };
+            setExpressiveVoiceId(prev => ensureValidVoice(prev, merged));
+            setChunkingVoiceId(prev => ensureValidVoice(prev, merged));
+            setDialogueVoiceId(prev => ensureValidVoice(prev, merged));
+            setV2vVoiceId(prev => ensureValidVoice(prev, merged));
           }
         } else {
           const errStr = vResult.error || '';
@@ -915,10 +957,14 @@ export default function TextToSpeechPage() {
             }
             setVoices(merged);
             if (merged.length > 0) {
-              setSelectedVoiceId(prev => {
-                const stillExists = prev && merged.some(v => v.voiceId === prev);
-                return stillExists ? prev : merged[0].voiceId;
-              });
+              const ensureValidVoice = (currentId: string, availableVoices: { voiceId: string }[]) => {
+                if (currentId && availableVoices.some(v => v.voiceId === currentId)) return currentId;
+                return availableVoices[0]?.voiceId || '';
+              };
+              setExpressiveVoiceId(prev => ensureValidVoice(prev, merged));
+              setChunkingVoiceId(prev => ensureValidVoice(prev, merged));
+              setDialogueVoiceId(prev => ensureValidVoice(prev, merged));
+              setV2vVoiceId(prev => ensureValidVoice(prev, merged));
             }
           } else {
             toast.error(`Voices Error: ${vResult.error}`);
@@ -1219,10 +1265,13 @@ export default function TextToSpeechPage() {
       if (item.dialogueLines) {
         setDialogueLines(item.dialogueLines.map(line => ({ ...line, id: generateId() })));
       }
+      setDialogueVoiceId(item.voiceId);
+      safeSetLocalStorage('tts-workbench-voice-dialogue', item.voiceId);
       setActiveTab('dialogue');
       toast.success('Dialogue settings and rows replicated from history!');
     } else if (item.type === 'chunked') {
-      setSelectedVoiceId(item.voiceId);
+      setChunkingVoiceId(item.voiceId);
+      safeSetLocalStorage('tts-workbench-voice-chunking', item.voiceId);
       const cleanText = item.text.replace(/^\[Chunk \d+\/\d+\] /, '');
       setText(cleanText);
       if (item.chunkText) {
@@ -1234,11 +1283,13 @@ export default function TextToSpeechPage() {
       setActiveTab('chunking');
       toast.success('Chunk Narration settings and script replicated from history!');
     } else if (item.type === 'sts') {
-      setSelectedVoiceId(item.voiceId);
+      setV2vVoiceId(item.voiceId);
+      safeSetLocalStorage('tts-workbench-voice-v2v', item.voiceId);
       setActiveTab('voice2voice');
       toast.success('Voice-to-Voice settings replicated from history!');
     } else {
-      setSelectedVoiceId(item.voiceId);
+      setExpressiveVoiceId(item.voiceId);
+      safeSetLocalStorage('tts-workbench-voice-expressive', item.voiceId);
       setText(item.text);
       setActiveTab('expressive');
       toast.success(`TTS text, seed (${item.seed ?? 'N/A'}), and settings replicated!`);
@@ -2869,10 +2920,10 @@ export default function TextToSpeechPage() {
       try {
         await clearCustomVoicesLocal();
         setVoices(prev => prev.filter(v => !v.isCustom));
-        setSelectedVoiceId(prev => {
-          const stillExists = voices.some(v => v.voiceId === prev && !v.isCustom);
-          return stillExists ? prev : '';
-        });
+        const remaining = voices.filter(v => !v.isCustom);
+        if (!remaining.some(v => v.voiceId === selectedVoiceId)) {
+          setSelectedVoiceId(remaining[0]?.voiceId || '');
+        }
         toast.success('All custom voices deleted from browser storage.');
       } catch (err) {
         console.error('Failed to clear custom voices:', err);
