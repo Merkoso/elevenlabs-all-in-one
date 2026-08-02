@@ -395,6 +395,8 @@ export default function TextToSpeechPage() {
   const [modelsLoading, setModelsLoading] = useState<boolean>(true);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [currentResult, setCurrentResult] = useState<any | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [currentTakesResults, setCurrentTakesResults] = useState<any[]>([]);
 
   // Rate Limit & Auth Errors
   const [rateLimitSeconds, setRateLimitSeconds] = useState<number>(0);
@@ -1363,19 +1365,25 @@ export default function TextToSpeechPage() {
 
       let successCount = 0;
       let lastSuccessResult = null;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const allSuccessfulTakes: any[] = [];
 
       for (const r of results) {
         if (r.ok && r.value && r.value.ok) {
           const data = r.value.value;
           const { url } = base64ToBlob(data.audioBase64, data.filename);
 
-          lastSuccessResult = {
+          const takeObj = {
             ...data,
             seed: r.seed,
             voiceName: vName,
             text,
-            audioUrl: url
+            audioUrl: url,
+            takeNumber: isMultiple ? r.idx + 1 : 1
           };
+
+          lastSuccessResult = takeObj;
+          allSuccessfulTakes.push(takeObj);
 
           await saveToHistory({
             id: data.id,
@@ -1429,12 +1437,9 @@ export default function TextToSpeechPage() {
         toast.error('Failed to generate speech. Please check API Key or parameters.');
       } else {
         toast.success(`Successfully generated ${successCount} take(s)!`);
+        setCurrentTakesResults(allSuccessfulTakes);
         if (lastSuccessResult) {
           setCurrentResult(lastSuccessResult);
-        }
-        
-        if (!isMultiple && isSeedLocked && lastSuccessResult) {
-          setSeed(lastSuccessResult.seed.toString());
         }
       }
     } catch (e) {
@@ -4273,18 +4278,31 @@ return (
                   </div>
 
                   <div className="pt-3.5 border-t border-zinc-900 flex flex-wrap items-center justify-between gap-3.5 mt-2">
-                    <div className="flex items-center gap-2.5 text-sm">
-                      <span className="text-zinc-400 font-semibold">Batch Takes:</span>
-                      <Select value={takesCount.toString()} onValueChange={(val) => setTakesCount(Number(val))}>
+                    <div className="flex flex-wrap items-center gap-3 text-sm">
+                      <span className="text-zinc-400 font-semibold">Takes Count:</span>
+                      <Select 
+                        value={isSeedLocked ? '1' : takesCount.toString()} 
+                        onValueChange={(val) => setTakesCount(Number(val))}
+                        disabled={isSeedLocked}
+                      >
                         <SelectTrigger className="h-10 w-28 bg-zinc-900 border-zinc-855 text-zinc-200 text-xs">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent className="bg-zinc-900 border-zinc-800 text-zinc-200">
                           <SelectItem value="1" className="text-xs">1 Take</SelectItem>
+                          <SelectItem value="2" className="text-xs">2 Takes</SelectItem>
                           <SelectItem value="3" className="text-xs">3 Takes</SelectItem>
+                          <SelectItem value="4" className="text-xs">4 Takes</SelectItem>
                           <SelectItem value="5" className="text-xs">5 Takes</SelectItem>
                         </SelectContent>
                       </Select>
+
+                      {isSeedLocked && (
+                        <div className="flex items-center gap-1.5 text-[11px] text-amber-300 bg-amber-950/40 border border-amber-800/40 px-3 py-1.5 rounded-md">
+                          <Lock className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                          <span>При зафиксированном Seed повторные тейки будут одинаковыми (1 тейк). Снимите 🔒 Seed для выбора 1–5 вариантов.</span>
+                        </div>
+                      )}
                     </div>
 
                     <Button 
@@ -4309,7 +4327,7 @@ return (
                       ) : (
                         <>
                           <Sparkles className="h-4 w-4 mr-1.5" />
-                          {takesCount > 1 ? `Generate ${takesCount} Takes` : 'Generate Take'}
+                          {!isSeedLocked && takesCount > 1 ? `Generate ${takesCount} Takes` : 'Generate Take'}
                         </>
                       )}
                     </Button>
@@ -5232,8 +5250,69 @@ return (
                         />
                       </div>
                     </div>
+                  ) : currentTakesResults.length > 1 ? (
+                    /* Multi-Take Comparison Panel if >1 takes were generated */
+                    <div className="space-y-3.5">
+                      <div className="p-3 bg-purple-950/20 border border-purple-900/40 rounded-lg flex flex-wrap justify-between items-center gap-2">
+                        <div>
+                          <h3 className="text-xs font-bold text-purple-200 flex items-center gap-1.5 uppercase tracking-wider">
+                            <Sparkles className="h-3.5 w-3.5 text-purple-400" />
+                            Generated {currentTakesResults.length} Variations (Different Seeds)
+                          </h3>
+                          <p className="text-[11px] text-zinc-400 mt-0.5">
+                            Listen to all takes below. Lock your favorite seed or save the audio file.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-2.5">
+                        {currentTakesResults.map((take, idx) => (
+                          <div key={take.id} className="p-3 bg-zinc-900/50 border border-zinc-800 rounded-lg space-y-2">
+                            <div className="flex justify-between items-center text-xs">
+                              <div className="flex items-center gap-2">
+                                <span className="px-2 py-0.5 bg-purple-900/60 text-purple-300 font-bold text-[10px] rounded border border-purple-700/50">
+                                  Take #{idx + 1}
+                                </span>
+                                <span className="text-zinc-400 font-mono text-[11px]">
+                                  Seed: <strong className="text-zinc-200">{take.seed ?? 'N/A'}</strong>
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                {take.seed !== null && take.seed !== undefined && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                      setSeed(take.seed.toString());
+                                      setIsSeedLocked(true);
+                                      toast.success(`Seed ${take.seed} locked for future generations!`);
+                                    }}
+                                    className="h-6 px-2 text-[10px] bg-purple-950/40 border-purple-800/50 text-purple-300 hover:bg-purple-900/60 gap-1"
+                                    title="Lock & use this seed for future generations"
+                                  >
+                                    <Lock className="h-3 w-3 text-purple-400" /> Lock Seed
+                                  </Button>
+                                )}
+
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => triggerBrowserDownload(take.filename, take.audioUrl)}
+                                  className="h-6 px-2 text-[10px] bg-zinc-950 border-zinc-800 text-zinc-300 hover:text-white gap-1"
+                                >
+                                  <Download className="h-3 w-3" /> Save
+                                </Button>
+                              </div>
+                            </div>
+
+                            <audio src={take.audioUrl} controls className="w-full h-7 bg-zinc-950 rounded" onPlay={e => handleGlobalAudioPlay(e.currentTarget)} />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   ) : (
-                    /* Standard TTS View */
+                    /* Standard Single View */
                     <>
                       <div className="text-xs bg-zinc-900/40 border border-zinc-900 rounded p-2.5 leading-relaxed text-zinc-400 relative group">
                         <div className="flex justify-between items-center mb-1.5">
@@ -5253,7 +5332,7 @@ return (
 
                       {/* Audio Controls */}
                       <div className="flex flex-col sm:flex-row items-center gap-3 bg-zinc-900/60 border border-zinc-800 rounded-lg p-3">
-                        <audio src={currentResult.audioUrl} controls className="w-full h-8" />
+                        <audio src={currentResult.audioUrl} controls className="w-full h-8" onPlay={e => handleGlobalAudioPlay(e.currentTarget)} />
                         <Button 
                           size="sm" 
                           variant="outline" 
