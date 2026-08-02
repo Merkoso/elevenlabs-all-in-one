@@ -315,8 +315,26 @@ export default function TextToSpeechPage() {
   const [voices, setVoices] = useState<any[]>([]);
   const [models, setModels] = useState<ElevenLabsModel[]>(DEFAULT_FALLBACK_MODELS);
   const [selectedVoiceId, setSelectedVoiceId] = useState<string>('');
-  const [selectedModelId, setSelectedModelId] = useState<string>('eleven_v3');
+  const [ttsModelId, setTtsModelId] = useState<string>('eleven_v3');
+  const [v2vModelId, setV2vModelId] = useState<string>('eleven_multilingual_sts_v2');
   const [storagePath, setStoragePath] = useState<string>('Loading...');
+
+  const selectedModelId = activeTab === 'voice2voice' ? v2vModelId : ttsModelId;
+
+  const handleModelChange = (modelId: string) => {
+    if (activeTab === 'voice2voice') {
+      setV2vModelId(modelId);
+      safeSetLocalStorage('tts-workbench-v2v-model-id', modelId);
+    } else {
+      setTtsModelId(modelId);
+      safeSetLocalStorage('tts-workbench-tts-model-id', modelId);
+    }
+  };
+
+  const handleVoiceSelect = (voiceId: string) => {
+    setSelectedVoiceId(voiceId);
+    safeSetLocalStorage('tts-workbench-selected-voice-id', voiceId);
+  };
   
   // Generation Params
   const [text, setText] = useState<string>('');
@@ -784,6 +802,12 @@ export default function TextToSpeechPage() {
         const savedVoiceId = localStorage.getItem('tts-workbench-selected-voice-id');
         if (savedVoiceId) setSelectedVoiceId(savedVoiceId);
 
+        const savedTtsModel = localStorage.getItem('tts-workbench-tts-model-id');
+        if (savedTtsModel) setTtsModelId(savedTtsModel);
+
+        const savedV2vModel = localStorage.getItem('tts-workbench-v2v-model-id');
+        if (savedV2vModel) setV2vModelId(savedV2vModel);
+
         const savedStability = localStorage.getItem('tts-workbench-stability');
         if (savedStability !== null) setStability(parseFloat(savedStability));
 
@@ -913,12 +937,17 @@ export default function TextToSpeechPage() {
             m => m.can_do_text_to_speech || m.can_do_voice_conversion || (typeof m.model_id === 'string' && (m.model_id.includes('sts') || m.model_id.includes('speech_to_speech')))
           );
           setModels(validModels);
-          // Set default model v3 if available, otherwise fallback
-          const hasV3 = validModels.some(m => m.model_id === 'eleven_v3');
-          setSelectedModelId(prev => {
-            const stillExists = prev && validModels.some(m => m.model_id === prev);
-            if (stillExists) return prev;
-            return hasV3 ? 'eleven_v3' : (validModels[0]?.model_id || 'eleven_v3');
+
+          setTtsModelId(prev => {
+            if (prev && validModels.some(m => m.model_id === prev)) return prev;
+            const hasV3 = validModels.some(m => m.model_id === 'eleven_v3');
+            return hasV3 ? 'eleven_v3' : (validModels.find(m => m.can_do_text_to_speech)?.model_id || 'eleven_v3');
+          });
+
+          setV2vModelId(prev => {
+            if (prev && validModels.some(m => m.model_id === prev)) return prev;
+            const firstSts = validModels.find(m => m.can_do_voice_conversion || (typeof m.model_id === 'string' && (m.model_id.includes('sts') || m.model_id.includes('speech_to_speech'))));
+            return firstSts ? firstSts.model_id : 'eleven_multilingual_sts_v2';
           });
         } else {
           const errStr = mResult.error || '';
@@ -932,9 +961,13 @@ export default function TextToSpeechPage() {
           ) {
             setIsApiKeyMissing(true);
             setModels(DEFAULT_FALLBACK_MODELS);
-            setSelectedModelId(prev => {
+            setTtsModelId(prev => {
               const stillExists = prev && DEFAULT_FALLBACK_MODELS.some(m => m.model_id === prev);
               return stillExists ? prev : 'eleven_v3';
+            });
+            setV2vModelId(prev => {
+              const stillExists = prev && DEFAULT_FALLBACK_MODELS.some(m => m.model_id === prev);
+              return stillExists ? prev : 'eleven_multilingual_sts_v2';
             });
           } else {
             toast.error(`Models Error: ${mResult.error}`);
@@ -1032,32 +1065,6 @@ export default function TextToSpeechPage() {
 
     loadData();
   }, [apiKey]);
-
-  // Handle auto-model selection when switching tabs (e.g. STS models for Voice-to-Voice)
-  useEffect(() => {
-    if (activeTab === 'voice2voice') {
-      const isCurrentSts = selectedModelId.includes('sts') || selectedModelId.includes('speech_to_speech');
-      if (!isCurrentSts) {
-        const firstSts = models.find(m => m.can_do_voice_conversion || (typeof m.model_id === 'string' && (m.model_id.includes('sts') || m.model_id.includes('speech_to_speech'))));
-        if (firstSts) {
-          setSelectedModelId(firstSts.model_id);
-        } else {
-          setSelectedModelId('eleven_multilingual_sts_v2');
-        }
-      }
-    } else {
-      const isCurrentTts = !selectedModelId.includes('sts');
-      if (!isCurrentTts) {
-        const hasV3 = models.some(m => m.model_id === 'eleven_v3');
-        if (hasV3) {
-          setSelectedModelId('eleven_v3');
-        } else {
-          const firstTts = models.find(m => m.can_do_text_to_speech);
-          if (firstTts) setSelectedModelId(firstTts.model_id);
-        }
-      }
-    }
-  }, [activeTab, models, selectedModelId]);
 
   // Global Keyboard Hotkeys Listener
   useEffect(() => {
@@ -1184,7 +1191,13 @@ export default function TextToSpeechPage() {
   };
 
   const replicateSettings = (item: HistoryItem) => {
-    setSelectedModelId(item.modelId);
+    if (item.type === 'sts' || item.type === 'sts-batch') {
+      setV2vModelId(item.modelId);
+      safeSetLocalStorage('tts-workbench-v2v-model-id', item.modelId);
+    } else {
+      setTtsModelId(item.modelId);
+      safeSetLocalStorage('tts-workbench-tts-model-id', item.modelId);
+    }
     setStability(item.stability);
     setSimilarityBoost(item.similarityBoost);
     setStyle(item.style);
@@ -3586,7 +3599,7 @@ return (
                 {/* Model */}
                 <div className="space-y-2">
                   <Label htmlFor="model-select" className="text-sm font-semibold text-zinc-300">Upstream Model</Label>
-                  <Select value={selectedModelId} onValueChange={setSelectedModelId}>
+                  <Select value={selectedModelId} onValueChange={handleModelChange}>
                     <SelectTrigger id="model-select" className="bg-zinc-900 border-zinc-850 text-sm h-10 flex-1 min-w-0">
                       <SelectValue placeholder="Select model" />
                     </SelectTrigger>
@@ -3652,7 +3665,7 @@ return (
                               size="sm" 
                               onClick={async () => {
                                 const targetId = voiceSearch.trim();
-                                setSelectedVoiceId(targetId);
+                                handleVoiceSelect(targetId);
                                 toast.info(`Attempting to fetch voice metadata...`);
                                 
                                 let newVoice: CustomVoice;
@@ -3762,7 +3775,7 @@ return (
                             >
                               <div 
                                 className="flex-1 cursor-pointer flex items-center gap-1.5 min-w-0" 
-                                onClick={() => setSelectedVoiceId(v.voiceId)}
+                                onClick={() => handleVoiceSelect(v.voiceId)}
                               >
                                 <span className="truncate text-[13px] font-medium text-zinc-200">{v.name}</span>
                                 {v.isCustom && (
@@ -4616,7 +4629,7 @@ return (
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-zinc-400 font-semibold">Model:</span>
-                      <Select value={selectedModelId} onValueChange={setSelectedModelId}>
+                      <Select value={selectedModelId} onValueChange={handleModelChange}>
                         <SelectTrigger className="bg-zinc-900 border-zinc-800 text-xs h-8 px-2.5 min-w-[200px]">
                           <SelectValue placeholder="Select Model" />
                         </SelectTrigger>
@@ -5045,7 +5058,7 @@ return (
                     <div className="flex flex-wrap items-center gap-4">
                       <div className="flex items-center gap-2">
                         <Label className="text-xs font-semibold text-zinc-300">Model:</Label>
-                        <Select value={selectedModelId} onValueChange={setSelectedModelId}>
+                        <Select value={selectedModelId} onValueChange={handleModelChange}>
                           <SelectTrigger className="bg-zinc-900 border-zinc-800 text-xs h-8 px-2.5 min-w-[200px]">
                             <SelectValue placeholder="Select STS Model" />
                           </SelectTrigger>
